@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- 内部私有文件目录（filesDir） -->
+    <files-path name="private_images" path="images/" />
+    <!-- 内部缓存目录（cacheDir）- 拍照临时文件存放处 -->
+    <cache-path name="cache_images" path="images/" />
+    <!-- 外部私有文件目录（getExternalFilesDir） -->
+    <external-files-path name="external_images" path="Pictures/" />
+    <!-- 外部缓存目录 -->
+    <external-cache-path name="external_cache" path="." />
+    <!-- 根路径（兜底） -->
+    <root-path name="root" path="" />
+</paths>

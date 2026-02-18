@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!--
+        设计理念：工序记录 App
+        风格：Material You / 现代扁平
+        元素：
+          - 白色半透明圆角卡片（记录本）
+          - 三条记录行（左侧彩色圆点 + 白色横线）
+          - 右下角大绿色勾选圆（完成感）
+          - 顶部铅笔装饰线
+    -->
+
+    <!-- ══ 白色半透明卡片（记录本主体） ══ -->
+    <path
+        android:pathData="M26,24 C26,20.7 28.7,18 32,18 L76,18 C79.3,18 82,20.7 82,24 L82,84 C82,87.3 79.3,90 76,90 L32,90 C28.7,90 26,87.3 26,84 Z"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.15"/>
+
+    <!-- 卡片描边 -->
+    <path
+        android:pathData="M26,24 C26,20.7 28.7,18 32,18 L76,18 C79.3,18 82,20.7 82,24 L82,84 C82,87.3 79.3,90 76,90 L32,90 C28.7,90 26,87.3 26,84 Z"
+        android:strokeWidth="2"
+        android:strokeColor="#FFFFFF"
+        android:strokeAlpha="0.5"
+        android:fillColor="#00000000"/>
+
+    <!-- ══ 顶部铅笔装饰（斜线） ══ -->
+    <path
+        android:pathData="M60,18 L82,18 L82,24 Z"
+        android:fillColor="#FFD54F"
+        android:fillAlpha="0.9"/>
+
+    <!-- ══ 记录行1：橙色圆点 + 横线 ══ -->
+    <path
+        android:pathData="M36,36 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0"
+        android:fillColor="#FF7043"/>
+    <path
+        android:pathData="M46,36 L74,36"
+        android:strokeWidth="3"
+        android:strokeColor="#FFFFFF"
+        android:strokeAlpha="0.8"
+        android:fillColor="#00000000"
+        android:strokeLineCap="round"/>
+
+    <!-- ══ 记录行2：蓝色圆点 + 横线 ══ -->
+    <path
+        android:pathData="M36,50 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0"
+        android:fillColor="#42A5F5"/>
+    <path
+        android:pathData="M46,50 L74,50"
+        android:strokeWidth="3"
+        android:strokeColor="#FFFFFF"
+        android:strokeAlpha="0.8"
+        android:fillColor="#00000000"
+        android:strokeLineCap="round"/>
+
+    <!-- ══ 记录行3：紫色圆点 + 短横线 ══ -->
+    <path
+        android:pathData="M36,64 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0"
+        android:fillColor="#AB47BC"/>
+    <path
+        android:pathData="M46,64 L66,64"
+        android:strokeWidth="3"
+        android:strokeColor="#FFFFFF"
+        android:strokeAlpha="0.5"
+        android:fillColor="#00000000"
+        android:strokeLineCap="round"/>
+
+    <!-- ══ 右下角钢笔（斜45°，精美样式） ══ -->
+
+    <!-- 钢笔笔身（主体，黄金色） -->
+    <path
+        android:pathData="M62,88 L84,66 L90,72 L68,94 Z"
+        android:fillColor="#FFD54F"/>
+
+    <!-- 笔身高光（左侧亮边） -->
+    <path
+        android:pathData="M62,88 L84,66 L86,68 L64,90 Z"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.35"/>
+
+    <!-- 笔身暗边（右侧） -->
+    <path
+        android:pathData="M86,68 L90,72 L68,94 L66,92 Z"
+        android:fillColor="#F9A825"
+        android:fillAlpha="0.8"/>
+
+    <!-- 笔夹（细长条，深色） -->
+    <path
+        android:pathData="M85,65 L88,68 L70,92 L67,89 Z"
+        android:fillColor="#5C6BC0"
+        android:fillAlpha="0.9"/>
+
+    <!-- 笔尖部分（银色三角） -->
+    <path
+        android:pathData="M84,66 L90,72 L94,68 Z"
+        android:fillColor="#E0E0E0"/>
+
+    <!-- 笔尖尖端（深色） -->
+    <path
+        android:pathData="M90,72 L94,68 L96,70 Z"
+        android:fillColor="#9E9E9E"/>
+
+    <!-- 笔尖缝线（细线） -->
+    <path
+        android:pathData="M90,72 L93,69"
+        android:strokeWidth="1"
+        android:strokeColor="#616161"
+        android:fillColor="#00000000"
+        android:strokeLineCap="round"/>
+
+    <!-- 笔帽环（金属环，笔身顶部） -->
+    <path
+        android:pathData="M60,90 L62,88 L64,90 L62,92 Z"
+        android:fillColor="#BDBDBD"/>
+
+    <!-- 墨水痕迹（笔尖下方小点，生动感） -->
+    <path
+        android:pathData="M95,71 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.6"/>
+
+    <!-- ══ 底部装饰线（书脊感） ══ -->
+    <path
+        android:pathData="M26,84 L56,84"
+        android:strokeWidth="1.5"
+        android:strokeColor="#FFFFFF"
+        android:strokeAlpha="0.2"
+        android:fillColor="#00000000"
+        android:strokeLineCap="round"/>
+
+</vector>
