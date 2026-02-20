@@ -1,6 +1,7 @@
 package com.example.processrecord.data
 
 import android.app.Application
+import com.example.processrecord.data.backup.DatabaseBackupManager
 
 class AppContainer(private val context: Application) {
     val database: AppDatabase by lazy {
@@ -23,5 +24,9 @@ class AppContainer(private val context: Application) {
 
     val styleRepository: StyleRepository by lazy {
         StyleRepository(database.styleDao())
+    }
+
+    val backupManager: DatabaseBackupManager by lazy {
+        DatabaseBackupManager(context)
     }
 }

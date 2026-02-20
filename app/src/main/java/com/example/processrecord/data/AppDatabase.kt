@@ -219,6 +219,11 @@ abstract class AppDatabase : RoomDatabase() {
             MIGRATION_7_8
         )
 
+        fun closeDatabase() {
+            Instance?.close()
+            Instance = null
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return Instance ?: synchronized(this) {
                 Room.databaseBuilder(context, AppDatabase::class.java, "process_record_database")

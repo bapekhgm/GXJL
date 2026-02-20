@@ -3,7 +3,6 @@ package com.example.processrecord.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.processrecord.data.WorkRecordRepository
-import com.example.processrecord.data.dao.WorkRecordColorItemDao
 import com.example.processrecord.data.entity.WorkRecord
 import com.example.processrecord.data.entity.WorkRecordColorItem
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -17,12 +16,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.util.Calendar
-import java.util.TimeZone
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class WorkRecordListViewModel(
-    private val workRecordRepository: WorkRecordRepository,
-    private val workRecordColorItemDao: WorkRecordColorItemDao
+    private val workRecordRepository: WorkRecordRepository
 ) : ViewModel() {
 
     private val _selectedDate = MutableStateFlow(System.currentTimeMillis())
@@ -78,7 +75,7 @@ class WorkRecordListViewModel(
         if (ids.isEmpty()) {
             kotlinx.coroutines.flow.flowOf(emptyMap())
         } else {
-            workRecordColorItemDao.getByRecordIds(ids).map { items ->
+            workRecordRepository.getColorItemsByRecordIdsStream(ids).map { items ->
                 items.groupBy { it.workRecordId }
             }
         }
@@ -88,7 +85,8 @@ class WorkRecordListViewModel(
         combine(recordsFlow, colorItemsFlow) { records, colorMap ->
             WorkRecordListUiState(
                 workRecordList = records,
-                colorItemsMap = colorMap
+                colorItemsMap = colorMap,
+                isLoading = false
             )
         }.stateIn(
             scope = viewModelScope,
@@ -123,5 +121,6 @@ class WorkRecordListViewModel(
 
 data class WorkRecordListUiState(
     val workRecordList: List<WorkRecord> = emptyList(),
-    val colorItemsMap: Map<Long, List<WorkRecordColorItem>> = emptyMap()
+    val colorItemsMap: Map<Long, List<WorkRecordColorItem>> = emptyMap(),
+    val isLoading: Boolean = true
 )

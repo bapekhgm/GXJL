@@ -11,7 +11,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -107,7 +107,7 @@ fun ProcessItem(
     ListItem(
         headlineContent = { Text(process.name) },
         supportingContent = { Text("${process.defaultPrice}/${process.unit}") },
-        trailingContent = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.outline) }, // Visual cue only
+        trailingContent = { Icon(Icons.Default.KeyboardArrowRight, contentDescription = "编辑", tint = MaterialTheme.colorScheme.outline) },
         modifier = modifier
     )
 }
