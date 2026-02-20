@@ -24,6 +24,9 @@ class OfflineWorkRecordRepository(
 ) : WorkRecordRepository {
     override fun getAllRecordsStream(): Flow<List<WorkRecord>> = workRecordDao.getAllRecords()
 
+    override fun getRecordsByDateRangeStream(startDate: Long, endDate: Long): Flow<List<WorkRecord>> =
+        workRecordDao.getRecordsByDateRange(startDate, endDate)
+
     override fun getRecordsByDateStream(date: Long): Flow<List<WorkRecord>> {
         val calendar = Calendar.getInstance()
         calendar.timeInMillis = date
@@ -116,6 +119,11 @@ class OfflineWorkRecordRepository(
 
     override suspend fun getColorItemsForRecord(recordId: Long): List<WorkRecordColorItem> {
         return workRecordColorItemDao.getByRecordId(recordId)
+    }
+
+    override fun getColorItemsByRecordIdsStream(recordIds: List<Long>): Flow<List<WorkRecordColorItem>> {
+        if (recordIds.isEmpty()) return kotlinx.coroutines.flow.flowOf(emptyList())
+        return workRecordColorItemDao.getByRecordIds(recordIds)
     }
 
     override fun getColorPresetsStream(): Flow<List<ColorPreset>> = colorPresetDao.getAllPresets()

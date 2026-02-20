@@ -51,6 +51,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.PlayArrow
@@ -66,6 +67,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -146,7 +148,9 @@ fun WorkRecordEntryScreen(
             onValueChange = viewModel::updateUiState,
             onProcessSelected = viewModel::onProcessSelected,
             onStyleSelected = viewModel::onStyleSelected,
-            onDeleteStyle = viewModel::deleteStyle,
+            onAddProcess = viewModel::addProcess,
+            onUpdateProcess = viewModel::updateProcess,
+            onDeleteProcess = viewModel::deleteProcess,
             onAddColorEntryFromPreset = viewModel::addColorEntryFromPreset,
             onUpdateColorEntryQuantity = viewModel::updateColorEntryQuantity,
             onRemoveColorEntry = viewModel::removeColorEntry,
@@ -213,7 +217,9 @@ fun WorkRecordEntryBody(
     onValueChange: (WorkRecordDetails) -> Unit,
     onProcessSelected: (Process) -> Unit,
     onStyleSelected: (String) -> Unit,
-    onDeleteStyle: (String) -> Unit,
+    onAddProcess: (String, Double, String) -> Unit,
+    onUpdateProcess: (Process) -> Unit,
+    onDeleteProcess: (Process) -> Unit,
     onAddColorEntryFromPreset: (String, String) -> Unit,
     onUpdateColorEntryQuantity: (String, String) -> Unit,
     onRemoveColorEntry: (String) -> Unit,
@@ -237,7 +243,9 @@ fun WorkRecordEntryBody(
             onValueChange = onValueChange,
             onProcessSelected = onProcessSelected,
             onStyleSelected = onStyleSelected,
-            onDeleteStyle = onDeleteStyle,
+            onAddProcess = onAddProcess,
+            onUpdateProcess = onUpdateProcess,
+            onDeleteProcess = onDeleteProcess,
             onAddColorEntryFromPreset = onAddColorEntryFromPreset,
             onUpdateColorEntryQuantity = onUpdateColorEntryQuantity,
             onRemoveColorEntry = onRemoveColorEntry,
@@ -300,7 +308,9 @@ fun WorkRecordInputForm(
     onValueChange: (WorkRecordDetails) -> Unit,
     onProcessSelected: (Process) -> Unit,
     onStyleSelected: (String) -> Unit,
-    onDeleteStyle: (String) -> Unit,
+    onAddProcess: (String, Double, String) -> Unit,
+    onUpdateProcess: (Process) -> Unit,
+    onDeleteProcess: (Process) -> Unit,
     onAddColorEntryFromPreset: (String, String) -> Unit,
     onUpdateColorEntryQuantity: (String, String) -> Unit,
     onRemoveColorEntry: (String) -> Unit,
@@ -313,6 +323,14 @@ fun WorkRecordInputForm(
     var initialPage by remember { mutableStateOf(0) }
     val context = LocalContext.current
     val calendar = Calendar.getInstance()
+
+    // 工序编辑弹窗状态
+    var showProcessDialog by remember { mutableStateOf(false) }
+    var editingProcess by remember { mutableStateOf<Process?>(null) }
+    var processDialogName by remember { mutableStateOf("") }
+    var processDialogPrice by remember { mutableStateOf("") }
+    var processDialogUnit by remember { mutableStateOf("件") }
+    var showDeleteProcessDialog by remember { mutableStateOf<Process?>(null) }
     
     val coroutineScope = rememberCoroutineScope()
 
@@ -527,9 +545,7 @@ fun WorkRecordInputForm(
                         onClick = { photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                     ) {
-                        Icon(Icons.Default.Add, "相册", modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("相册", style = MaterialTheme.typography.labelMedium)
+                        Text("🖼 相册", style = MaterialTheme.typography.labelMedium)
                     }
                 }
             }
@@ -713,24 +729,6 @@ fun WorkRecordInputForm(
                                 styleList.forEach { style ->
                                     DropdownMenuItem(
                                         text = { Text(style.name) },
-                                        trailingIcon = {
-                                            IconButton(
-                                                onClick = {
-                                                    onDeleteStyle(style.name)
-                                                    if (workRecordDetails.style == style.name) {
-                                                        onValueChange(workRecordDetails.copy(style = ""))
-                                                    }
-                                                },
-                                                modifier = Modifier.size(32.dp)
-                                            ) {
-                                                Icon(
-                                                    Icons.Default.Delete,
-                                                    contentDescription = "删除款号",
-                                                    tint = MaterialTheme.colorScheme.error,
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                            }
-                                        },
                                         onClick = {
                                             onStyleSelected(style.name)
                                             expandedStyle = false
@@ -756,16 +754,35 @@ fun WorkRecordInputForm(
                     readOnly = true,
                     label = { Text("工序") },
                     leadingIcon = { Icon(imageVector = Icons.Default.List, contentDescription = null) },
-                    trailingIcon = {
-                        Icon(imageVector = Icons.Default.ArrowDropDown, contentDescription = null,
-                            Modifier.padding(end = 8.dp))
-                    },
+                trailingIcon = {
+                    Icon(imageVector = Icons.Default.ArrowDropDown, contentDescription = null)
+                },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 )
                 Box(modifier = Modifier.matchParentSize().padding(top = 8.dp).clickable { expandedProcess = true })
                 DropdownMenu(expanded = expandedProcess, onDismissRequest = { expandedProcess = false },
                     modifier = Modifier.fillMaxWidth(0.9f)) {
+                    // 新增工序按钮
+                    DropdownMenuItem(
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                                Text("新增工序", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
+                            }
+                        },
+                        onClick = {
+                            expandedProcess = false
+                            editingProcess = null
+                            processDialogName = ""
+                            processDialogPrice = ""
+                            processDialogUnit = "件"
+                            showProcessDialog = true
+                        }
+                    )
+                    if (processList.isNotEmpty()) {
+                        HorizontalDivider()
+                    }
                     processList.forEach { process ->
                         DropdownMenuItem(
                             text = {
@@ -776,10 +793,115 @@ fun WorkRecordInputForm(
                                         color = MaterialTheme.colorScheme.outline)
                                 }
                             },
+                            trailingIcon = {
+                                Row {
+                                    IconButton(
+                                        onClick = {
+                                            expandedProcess = false
+                                            editingProcess = process
+                                            processDialogName = process.name
+                                            processDialogPrice = process.defaultPrice.toString()
+                                            processDialogUnit = process.unit
+                                            showProcessDialog = true
+                                        },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(Icons.Default.Edit, contentDescription = "编辑工序", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            expandedProcess = false
+                                            showDeleteProcessDialog = process
+                                        },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(Icons.Default.Delete, contentDescription = "删除工序", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.error)
+                                    }
+                                }
+                            },
                             onClick = { onProcessSelected(process); expandedProcess = false }
                         )
                     }
                 }
+            }
+
+            // 工序新增/编辑弹窗
+            if (showProcessDialog) {
+                AlertDialog(
+                    onDismissRequest = { showProcessDialog = false },
+                    title = { Text(if (editingProcess == null) "新增工序" else "编辑工序") },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            OutlinedTextField(
+                                value = processDialogName,
+                                onValueChange = { processDialogName = it },
+                                label = { Text("工序名称") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedTextField(
+                                    value = processDialogPrice,
+                                    onValueChange = { processDialogPrice = it },
+                                    label = { Text("默认单价") },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                                OutlinedTextField(
+                                    value = processDialogUnit,
+                                    onValueChange = { processDialogUnit = it },
+                                    label = { Text("单位") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                val name = processDialogName.trim()
+                                val price = processDialogPrice.toDoubleOrNull() ?: 0.0
+                                val unit = processDialogUnit.trim().ifEmpty { "件" }
+                                if (name.isNotEmpty()) {
+                                    val ep = editingProcess
+                                    if (ep == null) {
+                                        onAddProcess(name, price, unit)
+                                    } else {
+                                        onUpdateProcess(ep.copy(name = name, defaultPrice = price, unit = unit))
+                                    }
+                                    showProcessDialog = false
+                                }
+                            },
+                            enabled = processDialogName.trim().isNotEmpty()
+                        ) { Text("确定") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showProcessDialog = false }) { Text("取消") }
+                    }
+                )
+            }
+
+            // 工序删除确认弹窗
+            showDeleteProcessDialog?.let { process ->
+                AlertDialog(
+                    onDismissRequest = { showDeleteProcessDialog = null },
+                    title = { Text("删除工序") },
+                    text = { Text("确定要删除工序「${process.name}」吗？") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            onDeleteProcess(process)
+                            showDeleteProcessDialog = null
+                        }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showDeleteProcessDialog = null }) { Text("取消") }
+                    }
+                )
             }
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -789,7 +911,7 @@ fun WorkRecordInputForm(
                 OutlinedTextField(
                     value = workRecordDetails.serialNumber,
                     onValueChange = { onValueChange(workRecordDetails.copy(serialNumber = it)) },
-                    label = { Text("序号（选填）") },
+                    label = { Text("序号") },
                     modifier = Modifier.weight(1f),
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp)
@@ -797,7 +919,7 @@ fun WorkRecordInputForm(
                 OutlinedTextField(
                     value = workRecordDetails.totalQuantity,
                     onValueChange = { onValueChange(workRecordDetails.copy(totalQuantity = it)) },
-                    label = { Text("总数量（选填）") },
+                    label = { Text("总数量") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.weight(1f),
                     singleLine = true,
@@ -857,12 +979,48 @@ fun WorkRecordInputForm(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp)
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                            .padding(horizontal = 16.dp)
                     ) {
-                        Text("选择颜色", style = MaterialTheme.typography.titleMedium)
+                        Text("选择颜色", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 8.dp))
 
+                        // 已选颜色预览区（固定在顶部）
+                        if (selectedColors.isNotEmpty()) {
+                            Text("已选 ${selectedColors.size} 个颜色", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(bottom = 4.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState())
+                                    .padding(bottom = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                selectedColors.forEach { preset ->
+                                    Box(
+                                        modifier = Modifier
+                                            .background(parseColorOrDefault(preset.hexValue), RoundedCornerShape(50))
+                                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(preset.name, color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelSmall)
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Icon(
+                                                Icons.Default.Close, contentDescription = "移除",
+                                                tint = MaterialTheme.colorScheme.onPrimary,
+                                                modifier = Modifier.size(14.dp).clickable { selectedColors.remove(preset) }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // 可滚动的颜色列表
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f, fill = false)
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
                         val groupedFilteredPresets = colorGroups
                             .sortedBy { it.sortOrder }
                             .mapNotNull { group ->
@@ -938,35 +1096,10 @@ fun WorkRecordInputForm(
                             )
                         }
 
-                        // 已选颜色预览区
-                        if (selectedColors.isNotEmpty()) {
-                            Text("已选颜色", style = MaterialTheme.typography.labelMedium)
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                selectedColors.forEach { preset ->
-                                    Box(
-                                        modifier = Modifier
-                                            .background(parseColorOrDefault(preset.hexValue), RoundedCornerShape(50))
-                                            .padding(horizontal = 12.dp, vertical = 6.dp)
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(preset.name, color = MaterialTheme.colorScheme.onPrimary)
-                                            IconButton(
-                                                onClick = { selectedColors.remove(preset) },
-                                                modifier = Modifier.size(18.dp)
-                                            ) {
-                                                Icon(Icons.Default.Close, contentDescription = "移除", tint = MaterialTheme.colorScheme.onPrimary)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        } // end scrollable column
 
+                        // 固定在底部的操作按钮
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -1000,11 +1133,12 @@ fun WorkRecordInputForm(
                                 showAddColorSheet = false
                                 selectedColors.clear()
                                 onManageColorPresetsClick()
-                            }
+                            },
+                            modifier = Modifier.padding(bottom = 8.dp)
                         ) {
                             Text("去管理常用颜色")
                         }
-                    }
+                    } // end outer column
                 }
             }
 
@@ -1040,19 +1174,6 @@ fun WorkRecordInputForm(
                     tint = MaterialTheme.colorScheme.primary
                 )
             }
-
-            // 颜色汇总（折叠显示，可展开编辑）
-            OutlinedTextField(
-                value = workRecordDetails.color,
-                onValueChange = { onValueChange(workRecordDetails.copy(color = it)) },
-                label = { Text("颜色汇总（自动生成，可手改）") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = false,
-                maxLines = 2,
-                shape = RoundedCornerShape(12.dp)
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
 
             // 数量 + 单价
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {

@@ -11,6 +11,8 @@ import com.example.processrecord.ui.viewmodel.ExportViewModel
 import com.example.processrecord.ui.viewmodel.ProcessListViewModel
 import com.example.processrecord.ui.viewmodel.WorkRecordEntryViewModel
 import com.example.processrecord.ui.viewmodel.WorkRecordListViewModel
+import com.example.processrecord.ui.viewmodel.BackupViewModel
+import com.example.processrecord.ui.viewmodel.StyleManageViewModel
 import com.example.processrecord.ui.viewmodel.WorkRecordStatsViewModel
 
 object AppViewModelProvider {
@@ -37,12 +39,17 @@ object AppViewModelProvider {
         }
         initializer {
             WorkRecordListViewModel(
-                processRecordApplication().container.workRecordRepository,
-                processRecordApplication().container.database.workRecordColorItemDao()
+                processRecordApplication().container.workRecordRepository
             )
         }
         initializer {
             WorkRecordStatsViewModel(processRecordApplication().container.workRecordRepository)
+        }
+        initializer {
+            BackupViewModel(processRecordApplication().container.backupManager)
+        }
+        initializer {
+            StyleManageViewModel(processRecordApplication().container.styleRepository)
         }
     }
 }

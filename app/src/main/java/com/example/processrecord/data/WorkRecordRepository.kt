@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.Flow
 interface WorkRecordRepository {
     fun getAllRecordsStream(): Flow<List<WorkRecord>>
     fun getRecordsByDateStream(date: Long): Flow<List<WorkRecord>>
+    fun getRecordsByDateRangeStream(startDate: Long, endDate: Long): Flow<List<WorkRecord>>
     fun getTotalAmountByDateStream(date: Long): Flow<Double?>
     fun getTotalAmountByMonthStream(year: Int, month: Int): Flow<Double?>
     fun getStatsByStyleStream(): Flow<List<StyleStat>>
@@ -49,6 +50,9 @@ interface WorkRecordRepository {
     suspend fun addColorPreset(name: String, hexValue: String, groupId: Long)
     suspend fun updateColorPreset(preset: ColorPreset)
     suspend fun deleteColorPreset(preset: ColorPreset)
+
+    // Color items batch query (for list page)
+    fun getColorItemsByRecordIdsStream(recordIds: List<Long>): Flow<List<WorkRecordColorItem>>
 
     // Color groups
     fun getColorGroupsStream(): Flow<List<ColorGroup>>

@@ -9,4 +9,5 @@ class StyleRepository(private val styleDao: StyleDao) {
     suspend fun insertStyle(style: Style) = styleDao.insertStyle(style)
     suspend fun deleteStyle(style: Style) = styleDao.deleteStyle(style)
     suspend fun deleteStyleByName(name: String) = styleDao.deleteStyleByName(name)
+    suspend fun getStyleByName(name: String): Style? = styleDao.getStyleByName(name)
 }

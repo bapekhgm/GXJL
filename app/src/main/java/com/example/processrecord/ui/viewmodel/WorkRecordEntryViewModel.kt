@@ -226,20 +226,62 @@ class WorkRecordEntryViewModel(
     }
 
     fun onColorEntriesChanged(entries: List<ColorEntryUi>) {
-        val totalQuantity = entries.sumOf { it.quantity.toDoubleOrNull() ?: 0.0 }
+        val hasAnyQuantity = entries.any { it.quantity.toDoubleOrNull() != null && it.quantity.isNotBlank() }
         val colorSummary = buildColorSummary(entries)
-        updateUiState(
+        val newDetails = if (hasAnyQuantity) {
+            val totalQuantity = entries.sumOf { it.quantity.toDoubleOrNull() ?: 0.0 }
             workRecordUiState.workRecordDetails.copy(
                 colorEntries = entries,
                 color = colorSummary,
                 quantity = formatQuantity(totalQuantity)
             )
-        )
+        } else {
+            // 颜色明细都没填数量时，保留用户手动输入的数量
+            workRecordUiState.workRecordDetails.copy(
+                colorEntries = entries,
+                color = colorSummary
+            )
+        }
+        updateUiState(newDetails)
     }
 
     fun deleteStyle(styleName: String) {
         viewModelScope.launch {
             styleRepository.deleteStyleByName(styleName)
+        }
+    }
+
+    fun addProcess(name: String, defaultPrice: Double, unit: String) {
+        if (name.isBlank()) return
+        viewModelScope.launch {
+            processRepository.insertProcess(Process(name = name.trim(), defaultPrice = defaultPrice, unit = unit.trim()))
+        }
+    }
+
+    fun updateProcess(process: Process) {
+        viewModelScope.launch {
+            processRepository.updateProcess(process)
+            // 如果当前选中的就是这个工序，同步更新 UI
+            if (workRecordUiState.workRecordDetails.processId == process.id) {
+                updateUiState(workRecordUiState.workRecordDetails.copy(
+                    processName = process.name,
+                    unitPrice = process.defaultPrice.toString()
+                ))
+            }
+        }
+    }
+
+    fun deleteProcess(process: Process) {
+        viewModelScope.launch {
+            processRepository.deleteProcess(process)
+            // 如果当前选中的就是被删除的工序，清空选择
+            if (workRecordUiState.workRecordDetails.processId == process.id) {
+                updateUiState(workRecordUiState.workRecordDetails.copy(
+                    processId = null,
+                    processName = "",
+                    unitPrice = ""
+                ))
+            }
         }
     }
 

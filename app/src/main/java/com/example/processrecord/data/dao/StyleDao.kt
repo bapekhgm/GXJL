@@ -21,4 +21,7 @@ interface StyleDao {
 
     @Query("DELETE FROM styles WHERE name = :name")
     suspend fun deleteStyleByName(name: String)
+
+    @Query("SELECT * FROM styles WHERE name = :name LIMIT 1")
+    suspend fun getStyleByName(name: String): Style?
 }

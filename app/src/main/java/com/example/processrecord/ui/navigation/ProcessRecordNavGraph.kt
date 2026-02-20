@@ -9,6 +9,8 @@ import com.example.processrecord.ui.screen.ColorPresetManageScreen
 import com.example.processrecord.ui.screen.HomeScreen
 import com.example.processrecord.ui.screen.ProcessEntryScreen
 import com.example.processrecord.ui.screen.ProcessListScreen
+import com.example.processrecord.ui.screen.BackupScreen
+import com.example.processrecord.ui.screen.StyleManageScreen
 import com.example.processrecord.ui.screen.WorkRecordEntryScreen
 
 enum class ProcessRecordScreen {
@@ -16,7 +18,9 @@ enum class ProcessRecordScreen {
     ProcessList,
     ProcessEntry,
     WorkRecordEntry,
-    ColorPresetManage
+    ColorPresetManage,
+    StyleManage,
+    Backup
 }
 
 @Composable
@@ -34,7 +38,9 @@ fun ProcessRecordNavHost(
                 navigateToRecordEntry = { navController.navigate(ProcessRecordScreen.WorkRecordEntry.name) },
                 navigateToRecordEdit = { recordId -> navController.navigate("${ProcessRecordScreen.WorkRecordEntry.name}?recordId=$recordId") },
                 navigateToRecordCopy = { recordId -> navController.navigate("${ProcessRecordScreen.WorkRecordEntry.name}?copyFromId=$recordId") },
-                navigateToProcessList = { navController.navigate(ProcessRecordScreen.ProcessList.name) }
+                navigateToProcessList = { navController.navigate(ProcessRecordScreen.ProcessList.name) },
+                navigateToStyleManage = { navController.navigate(ProcessRecordScreen.StyleManage.name) },
+                navigateToBackup = { navController.navigate(ProcessRecordScreen.Backup.name) }
             )
         }
         composable(route = ProcessRecordScreen.ProcessList.name) {
@@ -75,6 +81,16 @@ fun ProcessRecordNavHost(
         }
         composable(route = ProcessRecordScreen.ColorPresetManage.name) {
             ColorPresetManageScreen(
+                navigateBack = { navController.popBackStack() }
+            )
+        }
+        composable(route = ProcessRecordScreen.StyleManage.name) {
+            StyleManageScreen(
+                navigateBack = { navController.popBackStack() }
+            )
+        }
+        composable(route = ProcessRecordScreen.Backup.name) {
+            BackupScreen(
                 navigateBack = { navController.popBackStack() }
             )
         }

@@ -69,6 +69,6 @@ data class ProcessDetails(
     val id: Long = 0,
     val name: String = "",
     val defaultPrice: String = "",
-    val unit: String = "元",
+    val unit: String = "件",
     val isActive: Boolean = true
 )
