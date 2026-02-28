@@ -54,9 +54,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.processrecord.R
 import com.example.processrecord.data.entity.WorkRecord
 import com.example.processrecord.data.entity.WorkRecordColorItem
 import com.example.processrecord.ui.AppViewModelProvider
@@ -87,15 +89,21 @@ fun HomeScreen(
     val workRecordListUiState by listViewModel.workRecordListUiState.collectAsState()
     val selectedDate by listViewModel.selectedDate.collectAsState()
     
-    // Calculate daily total from the current list directly
+    // Calculate daily total from the current list directly.
     val dailyTotal = workRecordListUiState.workRecordList.sumOf { it.amount }
     
     val monthTotal by statsViewModel.currentMonthTotalAmount.collectAsState()
+    
+    // Convert cents to yuan for display.
+    fun formatCentsToYuan(cents: Long): String {
+        val yuan = cents / 100.0
+        return String.format(Locale.getDefault(), "%.2f", yuan)
+    }
     val styleStats by statsViewModel.currentMonthStyleStats.collectAsState() // Use Monthly Stats
     val monthRecords by statsViewModel.currentMonthRecords.collectAsState() // Records for Monthly Stats details
     
     var selectedTab by remember { mutableStateOf(0) } // 0: Records, 1: Stats
-    var isIncomeVisible by remember { mutableStateOf(false) } // 默认隐藏收入
+    var isIncomeVisible by remember { mutableStateOf(false) } // Hidden by default
     var showExportMenu by remember { mutableStateOf(false) }
     var exportStartDate by remember { mutableStateOf<Long?>(null) }
     var exportEndDate by remember { mutableStateOf<Long?>(null) }
@@ -118,9 +126,20 @@ fun HomeScreen(
                 )
                 val message = result.fold(
                     onSuccess = { summary ->
-                        "导出成功，共 ${summary.recordCount} 条记录，合计 ¥${String.format(Locale.getDefault(), "%.2f", summary.totalAmount)}"
+                        context.resources.getQuantityString(
+                            R.plurals.home_export_success_message,
+                            summary.recordCount,
+                            summary.recordCount,
+                            String.format(Locale.getDefault(), "%.2f", summary.totalAmount)
+                        )
                     },
-                    onFailure = { throwable -> "导出失败：${throwable.message ?: "未知错误"}" }
+                    onFailure = { throwable ->
+                        context.getString(
+                            R.string.home_export_failed_message,
+                            throwable.message
+                                ?: context.getString(R.string.home_export_unknown_error)
+                        )
+                    }
                 )
                 Toast.makeText(context, message, Toast.LENGTH_LONG).show()
             }
@@ -132,7 +151,7 @@ fun HomeScreen(
     val calendarYear by listViewModel.calendarYear.collectAsState()
     val calendarMonth by listViewModel.calendarMonth.collectAsState()
 
-    // 自定义日历弹窗
+    // Custom calendar dialog host.
     CalendarDialogHost(
         showCalendarDialog = showCalendarDialog,
         selectedDate = selectedDate,
@@ -151,7 +170,7 @@ fun HomeScreen(
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("工序记录") },
+                title = { Text(stringResource(R.string.home_title)) },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
                     titleContentColor = MaterialTheme.colorScheme.primary
@@ -159,38 +178,48 @@ fun HomeScreen(
                 actions = {
                     Box {
                         IconButton(onClick = { showExportMenu = true }) {
-                            Icon(Icons.Default.MoreVert, contentDescription = "菜单")
+                            Icon(
+                                Icons.Default.MoreVert,
+                                contentDescription = stringResource(R.string.home_menu_content_description)
+                            )
                         }
                         DropdownMenu(
                             expanded = showExportMenu,
                             onDismissRequest = { showExportMenu = false }
                         ) {
                             DropdownMenuItem(
-                                text = { Text("工序管理") },
+                                text = { Text(stringResource(R.string.home_menu_process_manage)) },
                                 onClick = {
                                     showExportMenu = false
                                     navigateToProcessList()
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("款号管理") },
+                                text = { Text(stringResource(R.string.home_menu_style_manage)) },
                                 onClick = {
                                     showExportMenu = false
                                     navigateToStyleManage()
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("导出全部") },
+                                text = { Text(stringResource(R.string.home_menu_export_all)) },
                                 onClick = {
                                     showExportMenu = false
                                     exportStartDate = null
                                     exportEndDate = null
-                                    val filename = "工序记录_全部_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())}.xls"
+                                    val timestamp = SimpleDateFormat(
+                                        "yyyyMMdd_HHmmss",
+                                        Locale.getDefault()
+                                    ).format(Date())
+                                    val filename = context.getString(
+                                        R.string.home_export_filename_all,
+                                        timestamp
+                                    )
                                     createExcelLauncher.launch(filename)
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("导出本月") },
+                                text = { Text(stringResource(R.string.home_menu_export_current_month)) },
                                 onClick = {
                                     showExportMenu = false
                                     val monthCalendar = java.util.Calendar.getInstance()
@@ -205,12 +234,19 @@ fun HomeScreen(
                                     monthCalendar.add(java.util.Calendar.MILLISECOND, -1)
                                     exportEndDate = monthCalendar.timeInMillis
 
-                                    val filename = "工序记录_本月_${SimpleDateFormat("yyyyMM", Locale.getDefault()).format(Date())}.xls"
+                                    val monthText = SimpleDateFormat(
+                                        "yyyyMM",
+                                        Locale.getDefault()
+                                    ).format(Date())
+                                    val filename = context.getString(
+                                        R.string.home_export_filename_month,
+                                        monthText
+                                    )
                                     createExcelLauncher.launch(filename)
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("数据备份") },
+                                text = { Text(stringResource(R.string.home_menu_backup)) },
                                 onClick = {
                                     showExportMenu = false
                                     navigateToBackup()
@@ -222,117 +258,44 @@ fun HomeScreen(
             )
         },
         floatingActionButton = {
-            // 只在日记录 Tab 显示 FAB，避免遮挡统计数据
+            // Show FAB only in the records tab.
             if (selectedTab == 0) {
                 FloatingActionButton(
                     onClick = navigateToRecordEntry,
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary
                 ) {
-                    Icon(imageVector = Icons.Default.Add, contentDescription = "记一笔")
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = stringResource(R.string.home_add_record_content_description)
+                    )
                 }
             }
         }
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding)) {
-            // Dashboard with Gradient
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(
-                        brush = Brush.horizontalGradient(
-                            colors = listOf(
-                                MaterialTheme.colorScheme.primary,
-                                MaterialTheme.colorScheme.tertiary
-                            )
-                        )
-                    )
-                    .clickable { isIncomeVisible = !isIncomeVisible }
-            ) {
-                Row(
-                    modifier = Modifier
-                        .padding(24.dp)
-                        .fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceAround
-                ) {
-                    // Today
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "当日收入",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = if (isIncomeVisible) "¥${String.format(Locale.getDefault(), "%.2f", dailyTotal)}" else "****",
-                            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onPrimary
-                        )
-                    }
-                    
-                    // Month
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "本月收入",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = if (isIncomeVisible) "¥${String.format(Locale.getDefault(), "%.2f", monthTotal)}" else "****",
-                            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onPrimary
-                        )
-                    }
-                }
-            }
-            
-            TabRow(selectedTabIndex = selectedTab) {
-                Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("日记录") })
-                Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("本月统计") })
-            }
+            IncomeSummaryCard(
+                dailyTotal = dailyTotal,
+                monthTotal = monthTotal,
+                isIncomeVisible = isIncomeVisible,
+                onToggleVisible = { isIncomeVisible = !isIncomeVisible },
+                formatCentsToYuan = ::formatCentsToYuan
+            )
+
+            HomeRecordStatsTabRow(
+                selectedTab = selectedTab,
+                onTabSelected = { selectedTab = it }
+            )
 
             if (selectedTab == 0) {
-                 // Date Selector for Daily Records
-                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                 ) {
-                     IconButton(onClick = { listViewModel.decrementDate() }) {
-                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "前一天")
-                     }
-
-                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                         OutlinedButton(onClick = { showCalendarDialog = true }) {
-                             Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(16.dp))
-                             Spacer(modifier = Modifier.size(8.dp))
-                             val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                             Text(dateFormat.format(Date(selectedDate)))
-                         }
-                         // 今天快捷按钮
-                         val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-                         val selectedStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(selectedDate))
-                         if (selectedStr != todayStr) {
-                             TextButton(
-                                 onClick = { listViewModel.updateSelectedDate(System.currentTimeMillis()) },
-                                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp)
-                             ) {
-                                 Text("回到今天", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                             }
-                         }
-                     }
-                     
-                     IconButton(onClick = { listViewModel.incrementDate() }) {
-                         Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "后一天")
-                     }
-                 }
-            
-                 WorkRecordListBody(
+                DailyRecordDateSelector(
+                    selectedDate = selectedDate,
+                    onPreviousDayClick = { listViewModel.decrementDate() },
+                    onNextDayClick = { listViewModel.incrementDate() },
+                    onDateClick = { showCalendarDialog = true },
+                    onBackToTodayClick = { listViewModel.updateSelectedDate(System.currentTimeMillis()) }
+                )
+                WorkRecordListBody(
                     workRecordList = workRecordListUiState.workRecordList,
                     colorItemsMap = workRecordListUiState.colorItemsMap,
                     onRecordClick = navigateToRecordEdit,
@@ -344,7 +307,8 @@ fun HomeScreen(
             } else {
                 StyleStatsBody(
                     styleStats = styleStats,
-                    workRecordList = monthRecords, // Use month records for details
+                    workRecordList = monthRecords,
+                    colorItemsMap = statsViewModel.currentMonthColorItemsMap.collectAsState().value,
                     onRecordClick = navigateToRecordEdit,
                     modifier = Modifier.weight(1f)
                 )
@@ -363,7 +327,7 @@ fun WorkRecordListBody(
     onSwipeRight: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    // 累计水平拖动距离，超过阈值触发切换
+    // Accumulate horizontal drag distance and switch day when threshold is reached.
     var dragAccum by remember { mutableStateOf(0f) }
     val swipeThreshold = 80f
 
@@ -398,7 +362,7 @@ fun WorkRecordListBody(
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = "暂无记录，快去记一笔吧！",
+                    text = stringResource(R.string.home_empty_records),
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -425,7 +389,7 @@ fun WorkRecordListBody(
 }
 
 
-// 在 HomeScreen 中调用日历弹窗（插入到 Scaffold 之前）
+// Calendar dialog host for HomeScreen.
 @Composable
 private fun CalendarDialogHost(
     showCalendarDialog: Boolean,

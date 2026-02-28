@@ -1,12 +1,13 @@
 package com.example.processrecord.ui.screen
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -28,12 +29,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.processrecord.R
 import com.example.processrecord.ui.AppViewModelProvider
+import com.example.processrecord.ui.viewmodel.InvalidProcessInputException
 import com.example.processrecord.ui.viewmodel.ProcessDetails
+import com.example.processrecord.ui.viewmodel.ProcessAlreadyExistsException
 import com.example.processrecord.ui.viewmodel.ProcessEntryViewModel
+import com.example.processrecord.ui.viewmodel.ProcessNotFoundException
 import com.example.processrecord.ui.viewmodel.ProcessUiState
 import kotlinx.coroutines.launch
 
@@ -44,7 +51,12 @@ fun ProcessEntryScreen(
     navigateBack: () -> Unit
 ) {
     val coroutineScope = rememberCoroutineScope()
-    val title = if (viewModel.processUiState.processDetails.id == 0L) "添加工序" else "编辑工序"
+    val context = LocalContext.current
+    val title = if (viewModel.processUiState.processDetails.id == 0L) {
+        stringResource(R.string.process_entry_title_add)
+    } else {
+        stringResource(R.string.process_entry_title_edit)
+    }
 
     Scaffold(
         topBar = {
@@ -52,7 +64,10 @@ fun ProcessEntryScreen(
                 title = { Text(title) },
                 navigationIcon = {
                     IconButton(onClick = navigateBack) {
-                        Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "返回")
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.common_back)
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
@@ -66,14 +81,44 @@ fun ProcessEntryScreen(
             onProcessValueChange = viewModel::updateUiState,
             onSaveClick = {
                 coroutineScope.launch {
-                    viewModel.saveProcess()
-                    navigateBack()
+                    val result = viewModel.saveProcess()
+                    result.fold(
+                        onSuccess = { navigateBack() },
+                        onFailure = { error ->
+                            val message = when (error) {
+                                is ProcessAlreadyExistsException -> context.getString(
+                                    R.string.process_exists_message,
+                                    error.processName
+                                )
+                                is InvalidProcessInputException -> context.getString(R.string.process_input_invalid)
+                                else -> context.getString(R.string.process_save_failed)
+                            }
+                            Toast.makeText(
+                                context,
+                                message,
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    )
                 }
             },
             onDeleteClick = {
                 coroutineScope.launch {
-                    viewModel.deleteProcess()
-                    navigateBack()
+                    val result = viewModel.deleteProcess()
+                    result.fold(
+                        onSuccess = { navigateBack() },
+                        onFailure = { error ->
+                            val message = when (error) {
+                                is ProcessNotFoundException -> context.getString(R.string.process_not_found)
+                                else -> context.getString(R.string.process_delete_failed)
+                            }
+                            Toast.makeText(
+                                context,
+                                message,
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    )
                 }
             },
             modifier = Modifier.padding(innerPadding)
@@ -94,19 +139,29 @@ fun ProcessEntryBody(
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
-            title = { Text("确认删除") },
-            text = { Text("确定要删除工序「${processUiState.processDetails.name}」吗？删除后关联的记录将解除工序关联。") },
+            title = { Text(stringResource(R.string.process_delete_confirm_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.process_delete_confirm_message,
+                        processUiState.processDetails.name
+                    )
+                )
+            },
             confirmButton = {
                 TextButton(onClick = {
                     showDeleteDialog = false
                     onDeleteClick()
                 }) {
-                    Text("删除", color = MaterialTheme.colorScheme.error)
+                    Text(
+                        text = stringResource(R.string.common_delete),
+                        color = MaterialTheme.colorScheme.error
+                    )
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteDialog = false }) {
-                    Text("取消")
+                    Text(stringResource(R.string.common_cancel))
                 }
             }
         )
@@ -126,7 +181,13 @@ fun ProcessEntryBody(
                 enabled = processUiState.isEntryValid,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(if (processUiState.processDetails.id == 0L) "保存" else "更新")
+                Text(
+                    if (processUiState.processDetails.id == 0L) {
+                        stringResource(R.string.common_save)
+                    } else {
+                        stringResource(R.string.common_update)
+                    }
+                )
             }
             if (processUiState.processDetails.id != 0L) {
                 OutlinedButton(
@@ -137,7 +198,7 @@ fun ProcessEntryBody(
                     )
                 ) {
                     Icon(imageVector = Icons.Default.Delete, contentDescription = null)
-                    Text("删除")
+                    Text(stringResource(R.string.common_delete))
                 }
             }
         }
@@ -151,17 +212,24 @@ fun ProcessInputForm(
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        OutlinedTextField(
-            value = processDetails.name,
-            onValueChange = { onValueChange(processDetails.copy(name = it)) },
-            label = { Text("工序名称") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true
-        )
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            OutlinedTextField(
+                value = processDetails.name,
+                onValueChange = { onValueChange(processDetails.copy(name = it)) },
+                label = { Text(stringResource(R.string.process_name_label)) },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+            ProcessSuffixSelector(
+                name = processDetails.name,
+                onNameChange = { onValueChange(processDetails.copy(name = it)) }
+            )
+        }
+
         OutlinedTextField(
             value = processDetails.defaultPrice,
             onValueChange = { onValueChange(processDetails.copy(defaultPrice = it)) },
-            label = { Text("默认单价") },
+            label = { Text(stringResource(R.string.process_default_price_label)) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             modifier = Modifier.fillMaxWidth(),
             singleLine = true
@@ -169,7 +237,7 @@ fun ProcessInputForm(
         OutlinedTextField(
             value = processDetails.unit,
             onValueChange = { onValueChange(processDetails.copy(unit = it)) },
-            label = { Text("单位 (如: 件, 小时)") },
+            label = { Text(stringResource(R.string.process_unit_label)) },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true
         )

@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -41,12 +40,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.processrecord.R
 import com.example.processrecord.data.entity.Style
 import com.example.processrecord.ui.AppViewModelProvider
 import com.example.processrecord.ui.viewmodel.StyleManageViewModel
+import com.example.processrecord.ui.viewmodel.StyleManageViewModel.AddStyleResult
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,47 +62,71 @@ fun StyleManageScreen(
 
     var showAddDialog by remember { mutableStateOf(false) }
     var showBatchDialog by remember { mutableStateOf(false) }
-    var showDeleteDialog by remember { mutableStateOf<Style?>(null) }
 
-    // 添加单个款号弹窗
     if (showAddDialog) {
         var inputText by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { showAddDialog = false },
-            title = { Text("添加款号") },
+            title = { Text(stringResource(R.string.style_manage_add_single_title)) },
             text = {
                 OutlinedTextField(
                     value = inputText,
                     onValueChange = { inputText = it },
-                    label = { Text("款号名称") },
+                    label = { Text(stringResource(R.string.style_manage_name_label)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
             },
             confirmButton = {
-                TextButton(onClick = {
-                    viewModel.addStyle(inputText) { success, msg ->
-                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                        if (success) showAddDialog = false
+                TextButton(
+                    onClick = {
+                        viewModel.addStyle(inputText) { result ->
+                            val message = when (result) {
+                                AddStyleResult.EmptyName -> {
+                                    context.getString(R.string.style_manage_add_error_empty)
+                                }
+
+                                is AddStyleResult.Duplicate -> {
+                                    context.getString(
+                                        R.string.style_manage_add_error_exists,
+                                        result.name
+                                    )
+                                }
+
+                                is AddStyleResult.Added -> {
+                                    context.getString(
+                                        R.string.style_manage_add_success,
+                                        result.name
+                                    )
+                                }
+                            }
+                            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                            if (result is AddStyleResult.Added) {
+                                showAddDialog = false
+                            }
+                        }
                     }
-                }) { Text("添加") }
+                ) {
+                    Text(stringResource(R.string.style_manage_add_button))
+                }
             },
             dismissButton = {
-                TextButton(onClick = { showAddDialog = false }) { Text("取消") }
+                TextButton(onClick = { showAddDialog = false }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
             }
         )
     }
 
-    // 批量添加弹窗
     if (showBatchDialog) {
         var batchText by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { showBatchDialog = false },
-            title = { Text("批量添加款号") },
+            title = { Text(stringResource(R.string.style_manage_batch_title)) },
             text = {
                 Column {
                     Text(
-                        "每行一个款号，或用逗号、顿号、空格分隔",
+                        text = stringResource(R.string.style_manage_batch_hint),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -107,7 +134,7 @@ fun StyleManageScreen(
                     OutlinedTextField(
                         value = batchText,
                         onValueChange = { batchText = it },
-                        label = { Text("款号列表") },
+                        label = { Text(stringResource(R.string.style_manage_batch_list_label)) },
                         minLines = 4,
                         maxLines = 8,
                         modifier = Modifier.fillMaxWidth()
@@ -115,40 +142,35 @@ fun StyleManageScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = {
-                    viewModel.batchAddStyles(batchText) { added, skipped ->
-                        val msg = buildString {
-                            append("成功添加 $added 个款号")
-                            if (skipped > 0) append("，$skipped 个已存在跳过")
+                TextButton(
+                    onClick = {
+                        viewModel.batchAddStyles(batchText) { added, skipped ->
+                            val msg = if (skipped > 0) {
+                                context.resources.getQuantityString(
+                                    R.plurals.style_manage_batch_result_with_skipped,
+                                    added,
+                                    added,
+                                    skipped
+                                )
+                            } else {
+                                context.resources.getQuantityString(
+                                    R.plurals.style_manage_batch_result_added_only,
+                                    added,
+                                    added
+                                )
+                            }
+                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            showBatchDialog = false
                         }
-                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                        showBatchDialog = false
                     }
-                }) { Text("添加") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showBatchDialog = false }) { Text("取消") }
-            }
-        )
-    }
-
-    // 删除确认弹窗
-    showDeleteDialog?.let { style ->
-        AlertDialog(
-            onDismissRequest = { showDeleteDialog = null },
-            title = { Text("删除款号") },
-            text = { Text("确定要删除款号「${style.name}」吗？") },
-            confirmButton = {
-                TextButton(onClick = {
-                    viewModel.deleteStyle(style)
-                    showDeleteDialog = null
-                    Toast.makeText(context, "已删除「${style.name}」", Toast.LENGTH_SHORT).show()
-                }) {
-                    Text("删除", color = MaterialTheme.colorScheme.error)
+                ) {
+                    Text(stringResource(R.string.style_manage_add_button))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteDialog = null }) { Text("取消") }
+                TextButton(onClick = { showBatchDialog = false }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
             }
         )
     }
@@ -156,15 +178,18 @@ fun StyleManageScreen(
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("款号管理") },
+                title = { Text(stringResource(R.string.style_manage_title)) },
                 navigationIcon = {
                     IconButton(onClick = navigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.common_back)
+                        )
                     }
                 },
                 actions = {
                     TextButton(onClick = { showBatchDialog = true }) {
-                        Text("批量添加")
+                        Text(stringResource(R.string.style_manage_batch_action))
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
@@ -179,7 +204,10 @@ fun StyleManageScreen(
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary
             ) {
-                Icon(Icons.Default.Add, contentDescription = "添加款号")
+                Icon(
+                    Icons.Default.Add,
+                    contentDescription = stringResource(R.string.style_manage_fab_add_content_description)
+                )
             }
         }
     ) { innerPadding ->
@@ -192,7 +220,7 @@ fun StyleManageScreen(
                 verticalArrangement = Arrangement.Center
             ) {
                 Text(
-                    text = "暂无款号\n点击右下角 + 添加，或使用批量添加",
+                    text = stringResource(R.string.style_manage_empty),
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center
@@ -208,7 +236,11 @@ fun StyleManageScreen(
             ) {
                 item {
                     Text(
-                        text = "共 ${styleList.size} 个款号",
+                        text = pluralStringResource(
+                            R.plurals.style_manage_count,
+                            styleList.size,
+                            styleList.size
+                        ),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = 4.dp)
@@ -217,7 +249,14 @@ fun StyleManageScreen(
                 items(items = styleList, key = { it.id }) { style ->
                     StyleItem(
                         style = style,
-                        onDelete = { showDeleteDialog = style }
+                        onDelete = {
+                            viewModel.deleteStyle(style)
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.style_manage_delete_toast, style.name),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
                     )
                 }
             }
@@ -253,7 +292,7 @@ private fun StyleItem(
             ) {
                 Icon(
                     Icons.Default.Delete,
-                    contentDescription = "删除",
+                    contentDescription = stringResource(R.string.style_manage_delete_content_description),
                     tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
                     modifier = Modifier.size(20.dp)
                 )

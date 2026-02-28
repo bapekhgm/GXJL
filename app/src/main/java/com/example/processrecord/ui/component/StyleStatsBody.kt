@@ -28,10 +28,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.processrecord.R
 import com.example.processrecord.data.dao.StyleStat
 import com.example.processrecord.data.entity.WorkRecord
+import com.example.processrecord.data.entity.WorkRecordColorItem
 import java.util.Locale
 
 @Composable
@@ -41,7 +45,8 @@ fun PieChart(
         .fillMaxWidth()
         .height(200.dp)
 ) {
-    val total = data.sumOf { it.totalAmount }.takeIf { it > 0.0 } ?: 1.0
+    val total = data.sumOf { it.totalAmount }.takeIf { it > 0L } ?: 1L
+    val totalYuan = total / 100.0
     val colors = listOf(
         MaterialTheme.colorScheme.primary,
         MaterialTheme.colorScheme.secondary,
@@ -52,13 +57,14 @@ fun PieChart(
 
     Canvas(modifier = modifier.padding(8.dp)) {
         var startAngle = -90f
-        val canvasSize = this.size
+        val canvasSize = size
         val diameter = minOf(canvasSize.width, canvasSize.height)
         val left = (canvasSize.width - diameter) / 2f
         val top = (canvasSize.height - diameter) / 2f
 
         data.forEachIndexed { index, stat ->
-            val sweep = ((stat.totalAmount / total) * 360.0).toFloat()
+            val statAmountYuan = stat.totalAmount / 100.0
+            val sweep = ((statAmountYuan / totalYuan) * 360.0).toFloat()
             drawArc(
                 color = colors[index % colors.size],
                 startAngle = startAngle,
@@ -76,6 +82,7 @@ fun PieChart(
 fun StyleStatsBody(
     styleStats: List<StyleStat>,
     workRecordList: List<WorkRecord>,
+    colorItemsMap: Map<Long, List<WorkRecordColorItem>> = emptyMap(),
     onRecordClick: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -93,12 +100,12 @@ fun StyleStatsBody(
             )
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "本月暂无统计数据",
+                text = stringResource(R.string.style_stats_empty_title),
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
-                text = "快去记一笔吧！",
+                text = stringResource(R.string.style_stats_empty_subtitle),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
             )
@@ -114,20 +121,32 @@ fun StyleStatsBody(
                         headlineContent = { Text(stat.style, fontWeight = FontWeight.Bold) },
                         supportingContent = {
                             Text(
-                                text = "${styleRecordCount} 条记录",
+                                text = pluralStringResource(
+                                    R.plurals.style_stats_record_count,
+                                    styleRecordCount,
+                                    styleRecordCount
+                                ),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         },
                         trailingContent = {
                             Column(horizontalAlignment = Alignment.End) {
+                                val amountYuan = stat.totalAmount / 100.0
                                 Text(
-                                    text = "¥${String.format(Locale.getDefault(), "%.2f", stat.totalAmount)}",
+                                    text = stringResource(
+                                        R.string.style_stats_amount,
+                                        String.format(Locale.getDefault(), "%.2f", amountYuan)
+                                    ),
                                     style = MaterialTheme.typography.titleMedium,
                                     color = MaterialTheme.colorScheme.primary
                                 )
                                 Text(
-                                    text = if (expanded) "收起 ▲" else "展开 ▼",
+                                    text = if (expanded) {
+                                        stringResource(R.string.style_stats_collapse)
+                                    } else {
+                                        stringResource(R.string.style_stats_expand)
+                                    },
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.outline
                                 )
@@ -141,7 +160,7 @@ fun StyleStatsBody(
                             val styleRecords = workRecordList.filter { it.style == stat.style }
                             if (styleRecords.isEmpty()) {
                                 Text(
-                                    text = "无记录详情",
+                                    text = stringResource(R.string.style_stats_no_record_detail),
                                     modifier = Modifier.padding(16.dp),
                                     style = MaterialTheme.typography.bodySmall
                                 )
@@ -153,6 +172,7 @@ fun StyleStatsBody(
                                     styleRecords.forEach { record ->
                                         WorkRecordItem(
                                             record = record,
+                                            colorItems = colorItemsMap[record.id] ?: emptyList(),
                                             onClick = { onRecordClick(record.id) }
                                         )
                                     }

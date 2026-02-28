@@ -2,6 +2,7 @@ package com.example.processrecord.ui.utils
 
 import android.content.Context
 import android.net.Uri
+import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -9,33 +10,31 @@ import java.io.IOException
 import java.util.UUID
 
 /**
- * 图片工具类
+ * Utilities for copying user-selected images into app-private storage.
  *
- * 解决问题：直接存储 content:// URI 在 App 重装或系统清理后会失效。
- * 解决方案：将图片复制到 App 私有目录（filesDir/images/），存储本地绝对路径。
+ * Why this exists:
+ * - Persisting `content://` URIs directly is fragile after reinstall/cleanup.
+ * - We copy images into `filesDir/images` and store absolute local paths.
  *
- * 私有目录特点：
- * - 路径：/data/data/<packageName>/files/images/
- * - App 卸载时自动清理
- * - 无需额外存储权限（Android 10+）
- * - 不受 content:// URI 权限失效影响
+ * Private storage behavior:
+ * - Path: `data/data/<package>/files/images`
+ * - Removed automatically on app uninstall
+ * - No external storage permission required on modern Android
  */
 object ImageUtils {
 
     private const val IMAGE_DIR = "images"
 
     /**
-     * 将 content:// URI 指向的图片复制到 App 私有目录。
+     * Copy one source URI into app-private storage and return local absolute path.
      *
-     * @param context 上下文
-     * @param sourceUri 来源 URI（content:// 或 file://）
-     * @return 复制后的本地绝对路径，失败时返回 null
+     * Returns `null` if read/copy fails.
      */
     suspend fun copyImageToPrivateStorage(context: Context, sourceUri: Uri): String? {
         return withContext(Dispatchers.IO) {
             try {
                 val imageDir = File(context.filesDir, IMAGE_DIR).also { it.mkdirs() }
-                // 生成唯一文件名，保留原始扩展名（如 .jpg/.png）
+                // Keep a reasonable extension when available.
                 val extension = getExtensionFromUri(context, sourceUri) ?: "jpg"
                 val destFile = File(imageDir, "${UUID.randomUUID()}.$extension")
 
@@ -57,31 +56,24 @@ object ImageUtils {
     }
 
     /**
-     * 批量复制图片到私有目录。
-     * 已经是本地路径（以 "/" 开头）的图片直接跳过，不重复复制。
+     * Copy a mixed URI list into private storage.
      *
-     * @param context 上下文
-     * @param uris URI 列表（可混合 content:// 和本地路径）
-     * @return 本地绝对路径列表（过滤掉复制失败的项）
+     * Existing local absolute paths (starting with `/`) are kept as-is.
+     * Failed copies are filtered out.
      */
     suspend fun copyImagesToPrivateStorage(context: Context, uris: List<String>): List<String> {
         return uris.mapNotNull { uriString ->
             if (isLocalPath(uriString)) {
-                // 已经是本地路径，直接保留
                 uriString
             } else {
-                // content:// URI，复制到私有目录
-                val uri = Uri.parse(uriString)
+                val uri = uriString.toUri()
                 copyImageToPrivateStorage(context, uri)
             }
         }
     }
 
     /**
-     * 删除私有目录中的图片文件。
-     * 仅删除位于 App 私有目录内的文件，外部 URI 不处理。
-     *
-     * @param imagePath 本地绝对路径
+     * Delete one local image file from private storage if it exists.
      */
     fun deleteImageFromPrivateStorage(imagePath: String) {
         if (isLocalPath(imagePath)) {
@@ -93,13 +85,12 @@ object ImageUtils {
     }
 
     /**
-     * 判断字符串是否为本地文件路径（以 "/" 开头）。
+     * Return true when a path looks like a local absolute file path.
      */
     fun isLocalPath(path: String): Boolean = path.startsWith("/")
 
     /**
-     * 从 URI 推断文件扩展名。
-     * 优先从 MIME 类型推断，其次从 URI 路径提取。
+     * Resolve a reasonable file extension from MIME type or URI path.
      */
     private fun getExtensionFromUri(context: Context, uri: Uri): String? {
         val mimeType = context.contentResolver.getType(uri)
@@ -113,7 +104,7 @@ object ImageUtils {
                 else -> mimeType.substringAfterLast("/", "jpg")
             }
         }
-        // 从 URI 路径提取扩展名
+        // Fallback to URI path extension.
         return uri.lastPathSegment?.substringAfterLast(".", "jpg")
     }
 }

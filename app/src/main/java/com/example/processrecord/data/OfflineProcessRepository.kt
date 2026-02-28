@@ -9,9 +9,11 @@ class OfflineProcessRepository(private val processDao: ProcessDao) : ProcessRepo
 
     override suspend fun getProcessStream(id: Long): Process? = processDao.getProcessById(id)
 
-    override suspend fun insertProcess(process: Process) = processDao.insertProcess(process)
+    override suspend fun getProcessByName(name: String): Process? = processDao.getProcessByName(name)
 
-    override suspend fun deleteProcess(process: Process) = processDao.deleteProcess(process)
+    override suspend fun insertProcess(process: Process): Long = processDao.insertProcess(process)
+
+    override suspend fun deleteProcess(process: Process) = processDao.deactivateProcessById(process.id)
 
     override suspend fun updateProcess(process: Process) = processDao.updateProcess(process)
 }

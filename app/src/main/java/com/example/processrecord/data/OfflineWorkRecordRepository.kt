@@ -1,19 +1,20 @@
 package com.example.processrecord.data
 
-import com.example.processrecord.data.dao.StyleStat
 import com.example.processrecord.data.dao.ColorGroupDao
 import com.example.processrecord.data.dao.ColorPresetDao
-import com.example.processrecord.data.dao.WorkRecordDao
+import com.example.processrecord.data.dao.StyleStat
 import com.example.processrecord.data.dao.WorkRecordColorItemDao
-import com.example.processrecord.data.entity.WorkRecord
-import kotlinx.coroutines.flow.Flow
-import java.util.Calendar
-
+import com.example.processrecord.data.dao.WorkRecordDao
 import com.example.processrecord.data.dao.WorkRecordImageDao
-import com.example.processrecord.data.entity.ColorPreset
 import com.example.processrecord.data.entity.ColorGroup
+import com.example.processrecord.data.entity.ColorPreset
+import com.example.processrecord.data.entity.WorkRecord
 import com.example.processrecord.data.entity.WorkRecordColorItem
 import com.example.processrecord.data.entity.WorkRecordImage
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
+import java.io.File
+import java.util.Calendar
 
 class OfflineWorkRecordRepository(
     private val workRecordDao: WorkRecordDao,
@@ -22,6 +23,7 @@ class OfflineWorkRecordRepository(
     private val colorPresetDao: ColorPresetDao,
     private val colorGroupDao: ColorGroupDao
 ) : WorkRecordRepository {
+
     override fun getAllRecordsStream(): Flow<List<WorkRecord>> = workRecordDao.getAllRecords()
 
     override fun getRecordsByDateRangeStream(startDate: Long, endDate: Long): Flow<List<WorkRecord>> =
@@ -35,17 +37,17 @@ class OfflineWorkRecordRepository(
         calendar.set(Calendar.SECOND, 0)
         calendar.set(Calendar.MILLISECOND, 0)
         val startDate = calendar.timeInMillis
-        
+
         calendar.set(Calendar.HOUR_OF_DAY, 23)
         calendar.set(Calendar.MINUTE, 59)
         calendar.set(Calendar.SECOND, 59)
         calendar.set(Calendar.MILLISECOND, 999)
         val endDate = calendar.timeInMillis
-        
+
         return workRecordDao.getRecordsByDateRange(startDate, endDate)
     }
-    
-    override fun getTotalAmountByDateStream(date: Long): Flow<Double?> {
+
+    override fun getTotalAmountByDateStream(date: Long): Flow<Long?> {
         val calendar = Calendar.getInstance()
         calendar.timeInMillis = date
         calendar.set(Calendar.HOUR_OF_DAY, 0)
@@ -53,7 +55,7 @@ class OfflineWorkRecordRepository(
         calendar.set(Calendar.SECOND, 0)
         calendar.set(Calendar.MILLISECOND, 0)
         val startDate = calendar.timeInMillis
-        
+
         calendar.set(Calendar.HOUR_OF_DAY, 23)
         calendar.set(Calendar.MINUTE, 59)
         calendar.set(Calendar.SECOND, 59)
@@ -63,32 +65,30 @@ class OfflineWorkRecordRepository(
         return workRecordDao.getTotalAmountByDateRange(startDate, endDate)
     }
 
-    override fun getTotalAmountByMonthStream(year: Int, month: Int): Flow<Double?> {
+    override fun getTotalAmountByMonthStream(year: Int, month: Int): Flow<Long?> {
         val calendar = Calendar.getInstance()
-        calendar.set(year, month - 1, 1, 0, 0, 0) // Month is 0-based in Calendar
+        calendar.set(year, month - 1, 1, 0, 0, 0) // Calendar month is 0-based.
         calendar.set(Calendar.MILLISECOND, 0)
         val startDate = calendar.timeInMillis
-        
+
         calendar.add(Calendar.MONTH, 1)
         calendar.add(Calendar.MILLISECOND, -1)
         val endDate = calendar.timeInMillis
-        
-        return workRecordDao.getTotalAmountByRange(startDate, endDate)
+
+        return workRecordDao.getTotalAmountByDateRange(startDate, endDate)
     }
 
     override fun getStatsByStyleStream(): Flow<List<StyleStat>> = workRecordDao.getStatsByStyle()
 
-    override fun getStatsByStyleForRangeStream(startDate: Long, endDate: Long): Flow<List<StyleStat>> = workRecordDao.getStatsByStyleForRange(startDate, endDate)
+    override fun getStatsByStyleForRangeStream(startDate: Long, endDate: Long): Flow<List<StyleStat>> =
+        workRecordDao.getStatsByStyleForRange(startDate, endDate)
 
     override fun getRecordDatesInMonthStream(monthStart: Long, monthEnd: Long): Flow<List<Long>> =
         workRecordDao.getRecordDatesInMonth(monthStart, monthEnd)
 
     override suspend fun getRecordStream(id: Long): WorkRecord? = workRecordDao.getRecordById(id)
 
-    /**
-     * 原子性插入：主记录 + 图片 + 颜色明细在同一事务中完成。
-     * 任意一步失败，整个事务回滚，不会产生孤立数据。
-     */
+    // Atomic insert: write record + images + color items in one transaction.
     override suspend fun insertRecordWithDetails(
         record: WorkRecord,
         images: List<String>,
@@ -98,23 +98,39 @@ class OfflineWorkRecordRepository(
         return workRecordDao.insertRecordWithDetails(record, imageEntities, colorItems)
     }
 
-    /**
-     * 原子性更新：主记录 + 图片 + 颜色明细在同一事务中完成。
-     * 先删除旧的关联数据，再插入新的，保证数据一致性。
-     */
+    // Atomic update: replace record and related data in one transaction.
     override suspend fun updateRecordWithDetails(
         record: WorkRecord,
         images: List<String>,
         colorItems: List<WorkRecordColorItem>
     ) {
+        val previousImagePaths = workRecordImageDao.getImagesByWorkRecordId(record.id).map { it.imagePath }
         val imageEntities = images.map { path -> WorkRecordImage(workRecordId = record.id, imagePath = path) }
         workRecordDao.updateRecordWithDetails(record, imageEntities, colorItems)
+
+        val retainedPaths = images.toSet()
+        for (path in previousImagePaths.asSequence().filterNot { it in retainedPaths }.distinct()) {
+            deleteLocalImageIfUnreferenced(path)
+        }
     }
 
-    override suspend fun deleteRecord(record: WorkRecord) = workRecordDao.deleteRecord(record)
+    override suspend fun deleteRecord(record: WorkRecord) {
+        val imagePaths = workRecordImageDao.getImagesByWorkRecordId(record.id).map { it.imagePath }
+        workRecordDao.deleteRecord(record)
+        for (path in imagePaths.distinct()) {
+            deleteLocalImageIfUnreferenced(path)
+        }
+    }
 
     override suspend fun getImagesForRecord(recordId: Long): List<String> {
         return workRecordImageDao.getImagesByWorkRecordId(recordId).map { it.imagePath }
+    }
+
+    override suspend fun getImagesByRecordIds(recordIds: List<Long>): Map<Long, List<String>> {
+        if (recordIds.isEmpty()) return emptyMap()
+        return workRecordImageDao.getImagesByWorkRecordIds(recordIds)
+            .groupBy { it.workRecordId }
+            .mapValues { (_, images) -> images.map { it.imagePath } }
     }
 
     override suspend fun getColorItemsForRecord(recordId: Long): List<WorkRecordColorItem> {
@@ -122,19 +138,41 @@ class OfflineWorkRecordRepository(
     }
 
     override fun getColorItemsByRecordIdsStream(recordIds: List<Long>): Flow<List<WorkRecordColorItem>> {
-        if (recordIds.isEmpty()) return kotlinx.coroutines.flow.flowOf(emptyList())
+        if (recordIds.isEmpty()) return flowOf(emptyList())
         return workRecordColorItemDao.getByRecordIds(recordIds)
     }
 
     override fun getColorPresetsStream(): Flow<List<ColorPreset>> = colorPresetDao.getAllPresets()
 
     override suspend fun addColorPreset(name: String, hexValue: String, groupId: Long) {
-        val sortOrder = name.hashCode()
-        colorPresetDao.insertPreset(ColorPreset(name = name, hexValue = hexValue, groupId = groupId, sortOrder = sortOrder))
+        val trimmedName = name.trim()
+        if (trimmedName.isEmpty()) return
+        val existing = colorPresetDao.getPresetByName(trimmedName)
+        if (existing != null) {
+            throw ColorPresetNameConflictException(trimmedName)
+        }
+        val sortOrder = trimmedName.hashCode().and(Int.MAX_VALUE)
+        val insertedId = colorPresetDao.insertPreset(
+            ColorPreset(
+                name = trimmedName,
+                hexValue = hexValue,
+                groupId = groupId,
+                sortOrder = sortOrder
+            )
+        )
+        if (insertedId == -1L) {
+            throw ColorPresetNameConflictException(trimmedName)
+        }
     }
 
     override suspend fun updateColorPreset(preset: ColorPreset) {
-        colorPresetDao.updatePreset(preset)
+        val trimmedName = preset.name.trim()
+        if (trimmedName.isEmpty()) return
+        val existing = colorPresetDao.getPresetByName(trimmedName)
+        if (existing != null && existing.id != preset.id) {
+            throw ColorPresetNameConflictException(trimmedName)
+        }
+        colorPresetDao.updatePreset(preset.copy(name = trimmedName))
     }
 
     override suspend fun deleteColorPreset(preset: ColorPreset) {
@@ -144,21 +182,48 @@ class OfflineWorkRecordRepository(
     override fun getColorGroupsStream(): Flow<List<ColorGroup>> = colorGroupDao.getAllGroups()
 
     override suspend fun addColorGroup(name: String): Long {
-        return colorGroupDao.insertGroup(ColorGroup(name = name.trim(), sortOrder = name.hashCode()))
+        val trimmedName = name.trim()
+        if (trimmedName.isEmpty()) return 0L
+
+        val existing = colorGroupDao.getGroupByName(trimmedName)
+        if (existing != null) {
+            throw ColorGroupNameConflictException(trimmedName)
+        }
+
+        val insertedId = colorGroupDao.insertGroup(
+            ColorGroup(
+                name = trimmedName,
+                sortOrder = trimmedName.hashCode().and(Int.MAX_VALUE)
+            )
+        )
+        if (insertedId != -1L) return insertedId
+        throw ColorGroupNameConflictException(trimmedName)
     }
 
     override suspend fun updateColorGroup(group: ColorGroup) {
-        colorGroupDao.updateGroup(group.copy(name = group.name.trim()))
+        val trimmedName = group.name.trim()
+        if (trimmedName.isEmpty()) return
+        val existing = colorGroupDao.getGroupByName(trimmedName)
+        if (existing != null && existing.id != group.id) {
+            throw ColorGroupNameConflictException(trimmedName)
+        }
+        colorGroupDao.updateGroup(group.copy(name = trimmedName))
     }
 
     override suspend fun deleteColorGroup(group: ColorGroup) {
-        val defaultGroup = colorGroupDao.getGroupByName("自定义")
-            ?: ColorGroup(name = "自定义", sortOrder = 9999).let { newGroup ->
-                val id = colorGroupDao.insertGroup(newGroup)
-                newGroup.copy(id = id)
-            }
-        if (group.id == defaultGroup.id) return
-        colorPresetDao.moveGroupPresets(group.id, defaultGroup.id)
+        colorPresetDao.moveGroupPresets(group.id, 0)
         colorGroupDao.deleteGroup(group)
+    }
+
+    private suspend fun deleteLocalImageIfUnreferenced(path: String) {
+        if (!path.startsWith("/")) return
+        if (workRecordImageDao.countByImagePath(path) > 0) return
+
+        runCatching {
+            val file = File(path)
+            if (file.exists()) {
+                file.delete()
+            }
+        }
     }
 }

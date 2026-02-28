@@ -6,6 +6,8 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.processrecord.data.ColorGroupNameConflictException
+import com.example.processrecord.data.ColorPresetNameConflictException
 import com.example.processrecord.data.ProcessRepository
 import com.example.processrecord.data.StyleRepository
 import com.example.processrecord.data.WorkRecordRepository
@@ -15,10 +17,27 @@ import com.example.processrecord.data.entity.Process
 import com.example.processrecord.data.entity.Style
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.Locale
+
+class ProcessOperationFailedException : IllegalStateException()
+class InvalidWorkRecordInputException : IllegalArgumentException()
+class WorkRecordNotFoundException : NoSuchElementException()
+class ColorOperationFailedException : IllegalStateException()
+class InvalidColorPresetInputException : IllegalArgumentException()
+class ColorPresetAlreadyExistsException(val presetName: String) : IllegalArgumentException()
+class InvalidColorGroupInputException : IllegalArgumentException()
+class ColorGroupAlreadyExistsException(val groupName: String) : IllegalArgumentException()
+
+sealed interface ColorManageOperationNotice {
+    data class PresetAdded(val name: String) : ColorManageOperationNotice
+    data class PresetUpdated(val name: String) : ColorManageOperationNotice
+    data class PresetDeleted(val name: String) : ColorManageOperationNotice
+    data class GroupAdded(val name: String) : ColorManageOperationNotice
+    data class GroupUpdated(val name: String) : ColorManageOperationNotice
+    data class GroupDeleted(val name: String) : ColorManageOperationNotice
+}
 
 class WorkRecordEntryViewModel(
     savedStateHandle: SavedStateHandle,
@@ -31,6 +50,12 @@ class WorkRecordEntryViewModel(
     private val copyFromId: Long? = savedStateHandle.get<String>("copyFromId")?.toLongOrNull()
 
     var workRecordUiState by mutableStateOf(WorkRecordUiState())
+        private set
+    var processOperationError by mutableStateOf<Throwable?>(null)
+        private set
+    var colorManageOperationError by mutableStateOf<Throwable?>(null)
+        private set
+    var colorManageOperationNotice by mutableStateOf<ColorManageOperationNotice?>(null)
         private set
 
     val processList: StateFlow<List<Process>> =
@@ -53,7 +78,7 @@ class WorkRecordEntryViewModel(
         workRecordRepository.getColorPresetsStream()
             .stateIn(
                 scope = viewModelScope,
-                started = SharingStarted.WhileSubscribed(5000),
+                started = SharingStarted.Eagerly,
                 initialValue = emptyList()
             )
 
@@ -61,89 +86,73 @@ class WorkRecordEntryViewModel(
         workRecordRepository.getColorGroupsStream()
             .stateIn(
                 scope = viewModelScope,
-                started = SharingStarted.WhileSubscribed(5000),
-                initialValue = defaultColorGroups()
+                started = SharingStarted.Eagerly,
+                initialValue = emptyList()
             )
 
     init {
-        viewModelScope.launch {
-            val existingGroups = workRecordRepository.getColorGroupsStream().first()
-            if (existingGroups.isEmpty()) {
-                defaultColorGroups().forEach { group ->
-                    workRecordRepository.addColorGroup(group.name)
+        when {
+            recordId != null -> {
+                viewModelScope.launch {
+                    loadRecordDetails(sourceRecordId = recordId, asCopy = false)
                 }
             }
 
-            val groups = workRecordRepository.getColorGroupsStream().first()
-            val groupMap = groups.associateBy { it.name }
-
-            val existingPresets = workRecordRepository.getColorPresetsStream().first()
-            if (existingPresets.isEmpty()) {
-                defaultColorPresets().forEach { preset ->
-                    val groupId = groupMap[preset.groupName]?.id ?: groupMap["自定义"]?.id ?: 0L
-                    workRecordRepository.addColorPreset(preset.name, preset.hexValue, groupId)
+            copyFromId != null -> {
+                viewModelScope.launch {
+                    loadRecordDetails(sourceRecordId = copyFromId, asCopy = true)
                 }
-            }
-        }
-
-        if (recordId != null) {
-            viewModelScope.launch {
-                 val record = workRecordRepository.getRecordStream(recordId)
-                 if (record != null) {
-                     val images = workRecordRepository.getImagesForRecord(record.id)
-                     val colorItems = workRecordRepository.getColorItemsForRecord(record.id)
-                     val colorEntries = if (colorItems.isNotEmpty()) {
-                         colorItems.map { ColorEntryUi(it.colorName, it.colorHex, formatQuantity(it.quantity)) }
-                     } else {
-                         parseLegacyColorEntries(record.color)
-                     }
-                     val details = record.toWorkRecordDetails().copy(
-                         imagePaths = images,
-                         colorEntries = colorEntries
-                     )
-                     workRecordUiState = WorkRecordUiState(workRecordDetails = details, isEntryValid = true)
-                     if (colorEntries.isNotEmpty()) {
-                         onColorEntriesChanged(colorEntries)
-                     }
-                 }
-            }
-        } else if (copyFromId != null) {
-             viewModelScope.launch {
-                 val record = workRecordRepository.getRecordStream(copyFromId)
-                 if (record != null) {
-                     val images = workRecordRepository.getImagesForRecord(record.id)
-                     val colorItems = workRecordRepository.getColorItemsForRecord(record.id)
-                     val colorEntries = if (colorItems.isNotEmpty()) {
-                         colorItems.map { ColorEntryUi(it.colorName, it.colorHex, formatQuantity(it.quantity)) }
-                     } else {
-                         parseLegacyColorEntries(record.color)
-                     }
-                     val details = record.toWorkRecordDetails()
-                         .copy(
-                            id = 0, 
-                            date = System.currentTimeMillis(),
-                            startTime = 0,
-                            endTime = 0,
-                            imagePaths = images,
-                            colorEntries = colorEntries
-                         )
-                     workRecordUiState = WorkRecordUiState(workRecordDetails = details, isEntryValid = true)
-                     if (colorEntries.isNotEmpty()) {
-                         onColorEntriesChanged(colorEntries)
-                     }
-                 }
             }
         }
     }
 
+    private suspend fun loadRecordDetails(sourceRecordId: Long, asCopy: Boolean) {
+        val record = workRecordRepository.getRecordStream(sourceRecordId) ?: return
+        val images = workRecordRepository.getImagesForRecord(record.id)
+        val colorItems = workRecordRepository.getColorItemsForRecord(record.id)
+        val colorEntries = if (colorItems.isNotEmpty()) {
+            colorItems.map {
+                ColorEntryUi(
+                    colorName = it.colorName,
+                    colorHex = it.colorHex,
+                    quantity = formatQuantity(it.quantity),
+                    deficit = formatQuantity(it.deficit),
+                    colorCode = it.colorCode
+                )
+            }
+        } else {
+            parseLegacyColorEntries(record.color)
+        }
+
+        val details = if (asCopy) {
+            record.toWorkRecordDetails().copy(
+                id = 0,
+                date = System.currentTimeMillis(),
+                startTime = 0,
+                endTime = 0,
+                imagePaths = images,
+                colorEntries = colorEntries
+            )
+        } else {
+            record.toWorkRecordDetails().copy(
+                imagePaths = images,
+                colorEntries = colorEntries
+            )
+        }
+        workRecordUiState = WorkRecordUiState(workRecordDetails = details, isEntryValid = true)
+        if (colorEntries.isNotEmpty()) {
+            onColorEntriesChanged(colorEntries)
+        }
+    }
+
     fun updateUiState(recordDetails: WorkRecordDetails) {
-        // 自动计算金额
-        val quantity = recordDetails.quantity.toDoubleOrNull() ?: 0.0
-        val unitPrice = recordDetails.unitPrice.toDoubleOrNull() ?: 0.0
-        val amount = quantity * unitPrice
+        val quantity = recordDetails.quantity.toLongOrNull() ?: 0L
+        val unitPriceCents = yuanToCents(recordDetails.unitPrice)
+        val amountCents = quantity * unitPriceCents
+        val amountYuan = amountCents / 100.0
         
         workRecordUiState = WorkRecordUiState(
-            workRecordDetails = recordDetails.copy(amount = String.format(Locale.getDefault(), "%.2f", amount)),
+            workRecordDetails = recordDetails.copy(amount = String.format(Locale.getDefault(), "%.2f", amountYuan)),
             isEntryValid = validateInput(recordDetails)
         )
     }
@@ -162,6 +171,18 @@ class WorkRecordEntryViewModel(
         updateUiState(workRecordUiState.workRecordDetails.copy(style = styleName))
     }
 
+    fun consumeProcessOperationError() {
+        processOperationError = null
+    }
+
+    fun consumeColorManageOperationError() {
+        colorManageOperationError = null
+    }
+
+    fun consumeColorManageOperationNotice() {
+        colorManageOperationNotice = null
+    }
+
     fun addColorEntryFromPreset(colorName: String, colorHex: String) {
         val existing = workRecordUiState.workRecordDetails.colorEntries
         if (existing.any { it.colorName == colorName }) return
@@ -175,68 +196,166 @@ class WorkRecordEntryViewModel(
         onColorEntriesChanged(updated)
     }
 
+    fun updateColorEntryDeficit(colorName: String, deficit: String) {
+        val updated = workRecordUiState.workRecordDetails.colorEntries.map {
+            if (it.colorName == colorName) it.copy(deficit = deficit) else it
+        }
+        onColorEntriesChanged(updated)
+    }
+
+    fun updateColorEntryColorCode(colorName: String, colorCode: String) {
+        val updated = workRecordUiState.workRecordDetails.colorEntries.map {
+            if (it.colorName == colorName) it.copy(colorCode = colorCode) else it
+        }
+        onColorEntriesChanged(updated)
+    }
+
     fun removeColorEntry(colorName: String) {
         val updated = workRecordUiState.workRecordDetails.colorEntries.filterNot { it.colorName == colorName }
         onColorEntriesChanged(updated)
     }
 
-    fun addCustomColorPreset(name: String, hexValue: String, groupId: Long) {
-        if (name.isBlank()) return
+    fun addCustomColorPreset(name: String, hexValue: String, groupId: Long): Boolean {
+        val trimmedName = name.trim()
+        if (trimmedName.isBlank()) {
+            colorManageOperationError = InvalidColorPresetInputException()
+            return false
+        }
+        val duplicate = colorPresets.value.firstOrNull {
+            it.name.trim().equals(trimmedName, ignoreCase = true)
+        }
+        if (duplicate != null) {
+            colorManageOperationError = ColorPresetAlreadyExistsException(trimmedName)
+            return false
+        }
         val normalizedHex = normalizeHex(hexValue)
         viewModelScope.launch {
-            workRecordRepository.addColorPreset(name.trim(), normalizedHex, groupId)
+            runCatching {
+                workRecordRepository.addColorPreset(trimmedName, normalizedHex, groupId)
+            }.onSuccess {
+                colorManageOperationNotice = ColorManageOperationNotice.PresetAdded(trimmedName)
+            }.onFailure { error ->
+                colorManageOperationError = asColorOperationError(error)
+            }
         }
+        return true
     }
 
     fun deleteColorPreset(preset: ColorPreset) {
         viewModelScope.launch {
-            workRecordRepository.deleteColorPreset(preset)
+            runCatching {
+                workRecordRepository.deleteColorPreset(preset)
+            }.onSuccess {
+                colorManageOperationNotice = ColorManageOperationNotice.PresetDeleted(preset.name)
+            }.onFailure { error ->
+                colorManageOperationError = asColorOperationError(error)
+            }
         }
     }
 
-    fun updateColorPreset(preset: ColorPreset) {
+    fun updateColorPreset(preset: ColorPreset): Boolean {
+        val trimmedName = preset.name.trim()
+        if (trimmedName.isBlank()) {
+            colorManageOperationError = InvalidColorPresetInputException()
+            return false
+        }
+        val duplicate = colorPresets.value.firstOrNull {
+            it.id != preset.id && it.name.trim().equals(trimmedName, ignoreCase = true)
+        }
+        if (duplicate != null) {
+            colorManageOperationError = ColorPresetAlreadyExistsException(trimmedName)
+            return false
+        }
         viewModelScope.launch {
-            workRecordRepository.updateColorPreset(
-                preset.copy(
-                    name = preset.name.trim(),
-                    hexValue = normalizeHex(preset.hexValue)
+            runCatching {
+                workRecordRepository.updateColorPreset(
+                    preset.copy(
+                        name = trimmedName,
+                        hexValue = normalizeHex(preset.hexValue)
+                    )
                 )
-            )
+            }.onSuccess {
+                colorManageOperationNotice = ColorManageOperationNotice.PresetUpdated(trimmedName)
+            }.onFailure { error ->
+                colorManageOperationError = asColorOperationError(error)
+            }
         }
+        return true
     }
 
-    fun addColorGroup(name: String) {
-        if (name.isBlank()) return
-        viewModelScope.launch {
-            workRecordRepository.addColorGroup(name.trim())
+    fun addColorGroup(name: String): Boolean {
+        val trimmedName = name.trim()
+        if (trimmedName.isBlank()) {
+            colorManageOperationError = InvalidColorGroupInputException()
+            return false
         }
+        val duplicate = colorGroups.value.firstOrNull {
+            it.name.trim().equals(trimmedName, ignoreCase = true)
+        }
+        if (duplicate != null) {
+            colorManageOperationError = ColorGroupAlreadyExistsException(trimmedName)
+            return false
+        }
+        viewModelScope.launch {
+            runCatching {
+                workRecordRepository.addColorGroup(trimmedName)
+            }.onSuccess {
+                colorManageOperationNotice = ColorManageOperationNotice.GroupAdded(trimmedName)
+            }.onFailure { error ->
+                colorManageOperationError = asColorOperationError(error)
+            }
+        }
+        return true
     }
 
-    fun updateColorGroup(group: ColorGroup) {
-        if (group.name.isBlank()) return
-        viewModelScope.launch {
-            workRecordRepository.updateColorGroup(group.copy(name = group.name.trim()))
+    fun updateColorGroup(group: ColorGroup): Boolean {
+        val trimmedName = group.name.trim()
+        if (trimmedName.isBlank()) {
+            colorManageOperationError = InvalidColorGroupInputException()
+            return false
         }
+        val duplicate = colorGroups.value.firstOrNull {
+            it.id != group.id && it.name.trim().equals(trimmedName, ignoreCase = true)
+        }
+        if (duplicate != null) {
+            colorManageOperationError = ColorGroupAlreadyExistsException(trimmedName)
+            return false
+        }
+        viewModelScope.launch {
+            runCatching {
+                workRecordRepository.updateColorGroup(group.copy(name = trimmedName))
+            }.onSuccess {
+                colorManageOperationNotice = ColorManageOperationNotice.GroupUpdated(trimmedName)
+            }.onFailure { error ->
+                colorManageOperationError = asColorOperationError(error)
+            }
+        }
+        return true
     }
 
     fun deleteColorGroup(group: ColorGroup) {
         viewModelScope.launch {
-            workRecordRepository.deleteColorGroup(group)
+            runCatching {
+                workRecordRepository.deleteColorGroup(group)
+            }.onSuccess {
+                colorManageOperationNotice = ColorManageOperationNotice.GroupDeleted(group.name)
+            }.onFailure { error ->
+                colorManageOperationError = asColorOperationError(error)
+            }
         }
     }
 
     fun onColorEntriesChanged(entries: List<ColorEntryUi>) {
-        val hasAnyQuantity = entries.any { it.quantity.toDoubleOrNull() != null && it.quantity.isNotBlank() }
+        val hasAnyQuantity = entries.any { it.quantity.toLongOrNull() != null && it.quantity.isNotBlank() }
         val colorSummary = buildColorSummary(entries)
         val newDetails = if (hasAnyQuantity) {
-            val totalQuantity = entries.sumOf { it.quantity.toDoubleOrNull() ?: 0.0 }
+            val totalQuantity = entries.sumOf { it.quantity.toLongOrNull() ?: 0L }
             workRecordUiState.workRecordDetails.copy(
                 colorEntries = entries,
                 color = colorSummary,
-                quantity = formatQuantity(totalQuantity)
+                quantity = totalQuantity.toString()
             )
         } else {
-            // 颜色明细都没填数量时，保留用户手动输入的数量
             workRecordUiState.workRecordDetails.copy(
                 colorEntries = entries,
                 color = colorSummary
@@ -252,88 +371,193 @@ class WorkRecordEntryViewModel(
     }
 
     fun addProcess(name: String, defaultPrice: Double, unit: String) {
-        if (name.isBlank()) return
+        val trimmedName = name.trim()
+        val trimmedUnit = unit.trim()
+        if (!isValidProcessInput(trimmedName, defaultPrice, trimmedUnit)) {
+            processOperationError = InvalidProcessInputException()
+            return
+        }
         viewModelScope.launch {
-            processRepository.insertProcess(Process(name = name.trim(), defaultPrice = defaultPrice, unit = unit.trim()))
+            runCatching {
+                val existing = processRepository.getProcessByName(trimmedName)
+                val selected = when {
+                    existing == null -> {
+                        val insertedId = processRepository.insertProcess(
+                            Process(
+                                name = trimmedName,
+                                defaultPrice = defaultPrice,
+                                unit = trimmedUnit,
+                                isActive = true
+                            )
+                        )
+                        if (insertedId <= 0L) {
+                            processRepository.getProcessByName(trimmedName)
+                                ?: throw ProcessOperationFailedException()
+                        } else {
+                            Process(
+                                id = insertedId,
+                                name = trimmedName,
+                                defaultPrice = defaultPrice,
+                                unit = trimmedUnit,
+                                isActive = true
+                            )
+                        }
+                    }
+
+                    existing.isActive -> existing
+
+                    else -> {
+                        val reactivated = existing.copy(
+                            name = trimmedName,
+                            defaultPrice = defaultPrice,
+                            unit = trimmedUnit,
+                            isActive = true
+                        )
+                        processRepository.updateProcess(reactivated)
+                        reactivated
+                    }
+                }
+                onProcessSelected(selected)
+            }.onFailure {
+                processOperationError = it
+            }
         }
     }
+    
 
     fun updateProcess(process: Process) {
+        val trimmedName = process.name.trim()
+        val trimmedUnit = process.unit.trim()
+        if (!isValidProcessInput(trimmedName, process.defaultPrice, trimmedUnit)) {
+            processOperationError = InvalidProcessInputException()
+            return
+        }
+
         viewModelScope.launch {
-            processRepository.updateProcess(process)
-            // 如果当前选中的就是这个工序，同步更新 UI
-            if (workRecordUiState.workRecordDetails.processId == process.id) {
-                updateUiState(workRecordUiState.workRecordDetails.copy(
-                    processName = process.name,
-                    unitPrice = process.defaultPrice.toString()
-                ))
+            runCatching {
+                val existing = processRepository.getProcessByName(trimmedName)
+                if (existing != null && existing.id != process.id) {
+                    throw ProcessAlreadyExistsException(trimmedName)
+                }
+                val normalized = process.copy(
+                    name = trimmedName,
+                    unit = trimmedUnit,
+                    isActive = true
+                )
+                processRepository.updateProcess(normalized)
+                if (workRecordUiState.workRecordDetails.processId == normalized.id) {
+                    updateUiState(workRecordUiState.workRecordDetails.copy(
+                        processName = normalized.name,
+                        unitPrice = normalized.defaultPrice.toString()
+                    ))
+                }
+            }.onFailure {
+                processOperationError = it
             }
         }
     }
 
     fun deleteProcess(process: Process) {
         viewModelScope.launch {
-            processRepository.deleteProcess(process)
-            // 如果当前选中的就是被删除的工序，清空选择
-            if (workRecordUiState.workRecordDetails.processId == process.id) {
-                updateUiState(workRecordUiState.workRecordDetails.copy(
-                    processId = null,
-                    processName = "",
-                    unitPrice = ""
-                ))
+            runCatching {
+                processRepository.deleteProcess(process)
+                if (workRecordUiState.workRecordDetails.processId == process.id) {
+                    updateUiState(workRecordUiState.workRecordDetails.copy(
+                        processId = null,
+                        processName = "",
+                        unitPrice = ""
+                    ))
+                }
+            }.onFailure {
+                processOperationError = it
             }
         }
     }
 
     fun addNewStyle(styleName: String) {
-        if (styleName.isNotBlank()) {
-            viewModelScope.launch {
-                // Check if exists not implemented in DAO for simplicity, just try insert (ignore conflict) or just insert
-                // But better to check. For now, let's just insert.
-                styleRepository.insertStyle(Style(name = styleName))
-                onStyleSelected(styleName)
+        val normalized = styleName.trim()
+        if (normalized.isBlank()) return
+        viewModelScope.launch {
+            val existing = styleRepository.getStyleByName(normalized)
+            if (existing == null) {
+                styleRepository.insertStyle(Style(name = normalized))
             }
+            onStyleSelected(normalized)
         }
     }
 
     private fun validateInput(uiState: WorkRecordDetails = workRecordUiState.workRecordDetails): Boolean {
         return with(uiState) {
+            val quantityValue = quantity.toLongOrNull()
+            val unitPriceValue = normalizeDecimalInput(unitPrice).toDoubleOrNull()
             style.isNotBlank() && 
             processName.isNotBlank() && 
-            // quantity.isNotBlank() && // Quantity can be empty if just starting work
-            // unitPrice.isNotBlank() &&
+            quantityValue != null &&
+            quantityValue > 0L &&
+            unitPriceValue != null &&
+            unitPriceValue >= 0.0 &&
             date > 0
         }
     }
 
-    suspend fun saveWorkRecord() {
-        if (validateInput()) {
-            val record = workRecordUiState.workRecordDetails.toWorkRecord()
+    private fun isValidProcessInput(name: String, defaultPrice: Double, unit: String): Boolean {
+        return name.isNotBlank() &&
+            unit.isNotBlank() &&
+            defaultPrice.isFinite() &&
+            defaultPrice >= 0.0
+    }
+
+    private fun asColorOperationError(error: Throwable): Throwable {
+        return when (error) {
+            is ColorPresetNameConflictException ->
+                ColorPresetAlreadyExistsException(error.presetName)
+            is ColorGroupNameConflictException ->
+                ColorGroupAlreadyExistsException(error.groupName)
+            is InvalidColorPresetInputException,
+            is ColorPresetAlreadyExistsException,
+            is InvalidColorGroupInputException,
+            is ColorGroupAlreadyExistsException,
+            is ColorOperationFailedException -> error
+            else -> ColorOperationFailedException()
+        }
+    }
+
+    suspend fun saveWorkRecord(): Result<Unit> {
+        if (!validateInput()) {
+            return Result.failure(InvalidWorkRecordInputException())
+        }
+        return runCatching {
+            val normalizedStyle = workRecordUiState.workRecordDetails.style.trim()
+            val record = workRecordUiState.workRecordDetails
+                .copy(style = normalizedStyle)
+                .toWorkRecord()
             val images = workRecordUiState.workRecordDetails.imagePaths
             val colorItems = workRecordUiState.workRecordDetails.colorEntries.mapIndexed { index, entry ->
                 com.example.processrecord.data.entity.WorkRecordColorItem(
-                    workRecordId = 0, // 事务内部会自动填充正确的 workRecordId
+                    workRecordId = 0, // Filled with actual id inside transaction
                     colorName = entry.colorName,
                     colorHex = normalizeHex(entry.colorHex),
-                    quantity = entry.quantity.toDoubleOrNull() ?: 0.0,
+                    quantity = entry.quantity.toLongOrNull() ?: 0L,
+                    deficit = entry.deficit.toLongOrNull() ?: 0L,
+                    colorCode = entry.colorCode,
                     sortOrder = index
                 )
             }
 
-            // 自动保存新款号
-            if (styleList.value.none { it.name == record.style }) {
-                styleRepository.insertStyle(Style(name = record.style))
+            if (normalizedStyle.isNotBlank()) {
+                val existingStyle = styleRepository.getStyleByName(normalizedStyle)
+                if (existingStyle == null) {
+                    styleRepository.insertStyle(Style(name = normalizedStyle))
+                }
             }
 
             if (recordId != null) {
-                // 更新：原子性更新主记录 + 图片 + 颜色明细
                 workRecordRepository.updateRecordWithDetails(
                     record = record.copy(id = recordId),
                     images = images,
                     colorItems = colorItems
                 )
             } else {
-                // 新增：原子性插入主记录 + 图片 + 颜色明细
                 workRecordRepository.insertRecordWithDetails(
                     record = record,
                     images = images,
@@ -343,9 +567,12 @@ class WorkRecordEntryViewModel(
         }
     }
 
-    suspend fun deleteRecord() {
-        if (recordId != null) {
-             workRecordRepository.deleteRecord(workRecordUiState.workRecordDetails.toWorkRecord().copy(id = recordId))
+    suspend fun deleteRecord(): Result<Unit> {
+        val targetRecordId = recordId ?: return Result.failure(WorkRecordNotFoundException())
+        return runCatching {
+            workRecordRepository.deleteRecord(
+                workRecordUiState.workRecordDetails.toWorkRecord().copy(id = targetRecordId)
+            )
         }
     }
 }
@@ -377,11 +604,13 @@ data class WorkRecordDetails(
 data class ColorEntryUi(
     val colorName: String,
     val colorHex: String,
-    val quantity: String
+    val quantity: String,
+    val deficit: String = "",  // Deficit
+    val colorCode: String = ""  // Color code
 )
 
-private fun formatQuantity(value: Double): String {
-    return if (value % 1.0 == 0.0) value.toLong().toString() else String.format(Locale.getDefault(), "%.2f", value)
+private fun formatQuantity(value: Long): String {
+    return value.toString()
 }
 
 private fun normalizeHex(hex: String): String {
@@ -395,26 +624,26 @@ fun suggestHexByName(name: String): String? {
     val text = name.trim().lowercase(Locale.getDefault())
     if (text.isBlank()) return null
     return when {
-        text.contains("红") -> "#F44336"
-        text.contains("橙") -> "#FF9800"
-        text.contains("黄") -> "#FFEB3B"
-        text.contains("军绿") -> "#4B5320"
-        text.contains("绿") -> "#4CAF50"
-        text.contains("青") -> "#00BCD4"
-        text.contains("藏蓝") || text.contains("深蓝") -> "#1F3A5F"
-        text.contains("蓝") -> "#2196F3"
-        text.contains("紫") -> "#9C27B0"
-        text.contains("白") || text.contains("米") -> "#F5F5DC"
-        text.contains("卡其") -> "#C3B091"
-        text.contains("驼") -> "#B8860B"
-        text.contains("咖啡") || text.contains("棕") -> "#6F4E37"
-        text.contains("酒红") -> "#8B1A1A"
-        text.contains("粉") -> "#F48FB1"
-        text.contains("天蓝") -> "#87CEEB"
-        text.contains("浅灰") -> "#E0E0E0"
-        text.contains("深灰") -> "#616161"
-        text.contains("灰") -> "#9E9E9E"
-        text.contains("黑") -> "#212121"
+        text.contains("red") || text.contains("\u7ea2") -> "#F44336"
+        text.contains("orange") || text.contains("\u6a59") -> "#FF9800"
+        text.contains("yellow") || text.contains("\u9ec4") -> "#FFEB3B"
+        text.contains("army green") || text.contains("\u519b\u7eff") -> "#4B5320"
+        text.contains("green") || text.contains("\u7eff") -> "#4CAF50"
+        text.contains("cyan") || text.contains("teal") || text.contains("\u9752") -> "#00BCD4"
+        text.contains("navy") || text.contains("dark blue") || text.contains("\u85cf\u84dd") || text.contains("\u6df1\u84dd") -> "#1F3A5F"
+        text.contains("blue") || text.contains("\u84dd") -> "#2196F3"
+        text.contains("purple") || text.contains("violet") || text.contains("\u7d2b") -> "#9C27B0"
+        text.contains("white") || text.contains("beige") || text.contains("\u767d") || text.contains("\u7c73") -> "#F5F5DC"
+        text.contains("khaki") || text.contains("\u5361\u5176") -> "#C3B091"
+        text.contains("camel") || text.contains("\u9a7c") -> "#B8860B"
+        text.contains("coffee") || text.contains("brown") || text.contains("\u5496\u5561") || text.contains("\u68d5") -> "#6F4E37"
+        text.contains("burgundy") || text.contains("wine") || text.contains("\u9152\u7ea2") -> "#8B1A1A"
+        text.contains("pink") || text.contains("\u7c89") -> "#F48FB1"
+        text.contains("sky blue") || text.contains("\u5929\u84dd") -> "#87CEEB"
+        text.contains("light gray") || text.contains("\u6d45\u7070") -> "#E0E0E0"
+        text.contains("dark gray") || text.contains("\u6df1\u7070") -> "#616161"
+        text.contains("gray") || text.contains("grey") || text.contains("\u7070") -> "#9E9E9E"
+        text.contains("black") || text.contains("\u9ed1") -> "#212121"
         else -> null
     }
 }
@@ -432,73 +661,8 @@ private fun parseLegacyColorEntries(text: String): List<ColorEntryUi> {
     val matched = regex.findAll(text).map {
         val name = it.groupValues[1]
         val qty = it.groupValues[2]
-        ColorEntryUi(name, defaultHexByName(name), qty)
+        ColorEntryUi(name, suggestHexByName(name) ?: "#9E9E9E", qty)
     }.toList()
     return if (matched.isNotEmpty()) matched else listOf(ColorEntryUi(text.trim(), "#9E9E9E", ""))
-}
-
-private fun defaultColorGroups(): List<ColorGroup> = listOf(
-    ColorGroup(id = 1, name = "基础色", sortOrder = 1),
-    ColorGroup(id = 2, name = "中性色", sortOrder = 2),
-    ColorGroup(id = 3, name = "常见面料色", sortOrder = 3),
-    ColorGroup(id = 4, name = "自定义", sortOrder = 9999)
-)
-
-private data class DefaultPresetSeed(
-    val name: String,
-    val hexValue: String,
-    val groupName: String,
-    val sortOrder: Int
-)
-
-private fun defaultColorPresets(): List<DefaultPresetSeed> = listOf(
-    DefaultPresetSeed(name = "红色", hexValue = "#F44336", groupName = "基础色", sortOrder = 1),
-    DefaultPresetSeed(name = "橙色", hexValue = "#FF9800", groupName = "基础色", sortOrder = 2),
-    DefaultPresetSeed(name = "黄色", hexValue = "#FFEB3B", groupName = "基础色", sortOrder = 3),
-    DefaultPresetSeed(name = "绿色", hexValue = "#4CAF50", groupName = "基础色", sortOrder = 4),
-    DefaultPresetSeed(name = "青色", hexValue = "#00BCD4", groupName = "基础色", sortOrder = 5),
-    DefaultPresetSeed(name = "蓝色", hexValue = "#2196F3", groupName = "基础色", sortOrder = 6),
-    DefaultPresetSeed(name = "紫色", hexValue = "#9C27B0", groupName = "基础色", sortOrder = 7),
-    DefaultPresetSeed(name = "黑色", hexValue = "#212121", groupName = "中性色", sortOrder = 8),
-    DefaultPresetSeed(name = "深灰", hexValue = "#616161", groupName = "中性色", sortOrder = 9),
-    DefaultPresetSeed(name = "灰色", hexValue = "#9E9E9E", groupName = "中性色", sortOrder = 10),
-    DefaultPresetSeed(name = "浅灰", hexValue = "#E0E0E0", groupName = "中性色", sortOrder = 11),
-    DefaultPresetSeed(name = "白色", hexValue = "#FFFFFF", groupName = "中性色", sortOrder = 12),
-    DefaultPresetSeed(name = "米白", hexValue = "#F5F5DC", groupName = "常见面料色", sortOrder = 13),
-    DefaultPresetSeed(name = "卡其", hexValue = "#C3B091", groupName = "常见面料色", sortOrder = 14),
-    DefaultPresetSeed(name = "驼色", hexValue = "#B8860B", groupName = "常见面料色", sortOrder = 15),
-    DefaultPresetSeed(name = "咖啡", hexValue = "#6F4E37", groupName = "常见面料色", sortOrder = 16),
-    DefaultPresetSeed(name = "藏蓝", hexValue = "#1F3A5F", groupName = "常见面料色", sortOrder = 17),
-    DefaultPresetSeed(name = "酒红", hexValue = "#8B1A1A", groupName = "常见面料色", sortOrder = 18),
-    DefaultPresetSeed(name = "军绿", hexValue = "#4B5320", groupName = "常见面料色", sortOrder = 19),
-    DefaultPresetSeed(name = "粉色", hexValue = "#F48FB1", groupName = "常见面料色", sortOrder = 20),
-    DefaultPresetSeed(name = "天蓝", hexValue = "#87CEEB", groupName = "常见面料色", sortOrder = 21)
-)
-
-private fun defaultHexByName(name: String): String {
-    val text = name.trim()
-    return when {
-        text.contains("红") -> "#F44336"
-        text.contains("橙") -> "#FF9800"
-        text.contains("黄") -> "#FFEB3B"
-        text.contains("军绿") -> "#4B5320"
-        text.contains("绿") -> "#4CAF50"
-        text.contains("青") -> "#00BCD4"
-        text.contains("藏蓝") || text.contains("深蓝") -> "#1F3A5F"
-        text.contains("蓝") -> "#2196F3"
-        text.contains("紫") -> "#9C27B0"
-        text.contains("白") || text.contains("米") -> "#F5F5DC"
-        text.contains("卡其") -> "#C3B091"
-        text.contains("驼") -> "#B8860B"
-        text.contains("咖啡") || text.contains("棕") -> "#6F4E37"
-        text.contains("酒红") -> "#8B1A1A"
-        text.contains("粉") -> "#F48FB1"
-        text.contains("天蓝") -> "#87CEEB"
-        text.contains("浅灰") -> "#E0E0E0"
-        text.contains("深灰") -> "#616161"
-        text.contains("灰") -> "#9E9E9E"
-        text.contains("黑") -> "#212121"
-        else -> "#9E9E9E"
-    }
 }
 
