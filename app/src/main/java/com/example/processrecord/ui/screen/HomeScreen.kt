@@ -80,6 +80,7 @@ fun HomeScreen(
     navigateToProcessList: () -> Unit,
     navigateToStyleManage: () -> Unit = {},
     navigateToBackup: () -> Unit = {},
+    navigateToPinSetup: () -> Unit = {},
     listViewModel: WorkRecordListViewModel = viewModel(factory = AppViewModelProvider.Factory),
     statsViewModel: WorkRecordStatsViewModel = viewModel(factory = AppViewModelProvider.Factory),
     exportViewModel: ExportViewModel = viewModel(factory = AppViewModelProvider.Factory)
@@ -214,6 +215,13 @@ fun HomeScreen(
                                 onClick = {
                                     showExportMenu = false
                                     navigateToBackup()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("密码设置") },
+                                onClick = {
+                                    showExportMenu = false
+                                    navigateToPinSetup()
                                 }
                             )
                         }

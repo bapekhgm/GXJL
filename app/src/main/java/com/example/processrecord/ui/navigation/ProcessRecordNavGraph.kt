@@ -1,12 +1,17 @@
 package com.example.processrecord.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import com.example.processrecord.data.PinManager
 import com.example.processrecord.ui.screen.ColorPresetManageScreen
 import com.example.processrecord.ui.screen.HomeScreen
+import com.example.processrecord.ui.screen.PinLockScreen
+import com.example.processrecord.ui.screen.PinSetupScreen
 import com.example.processrecord.ui.screen.ProcessEntryScreen
 import com.example.processrecord.ui.screen.ProcessListScreen
 import com.example.processrecord.ui.screen.BackupScreen
@@ -20,7 +25,9 @@ enum class ProcessRecordScreen {
     WorkRecordEntry,
     ColorPresetManage,
     StyleManage,
-    Backup
+    Backup,
+    PinLock,
+    PinSetup
 }
 
 @Composable
@@ -28,11 +35,33 @@ fun ProcessRecordNavHost(
     navController: NavHostController,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val pinManager = remember { PinManager(context) }
+    val startDestination = if (pinManager.isPinEnabled) {
+        ProcessRecordScreen.PinLock.name
+    } else {
+        ProcessRecordScreen.Home.name
+    }
+
     NavHost(
         navController = navController,
-        startDestination = ProcessRecordScreen.Home.name,
+        startDestination = startDestination,
         modifier = modifier
     ) {
+        composable(route = ProcessRecordScreen.PinLock.name) {
+            PinLockScreen(
+                onAuthenticated = {
+                    navController.navigate(ProcessRecordScreen.Home.name) {
+                        popUpTo(ProcessRecordScreen.PinLock.name) { inclusive = true }
+                    }
+                }
+            )
+        }
+        composable(route = ProcessRecordScreen.PinSetup.name) {
+            PinSetupScreen(
+                navigateBack = { navController.popBackStack() }
+            )
+        }
         composable(route = ProcessRecordScreen.Home.name) {
             HomeScreen(
                 navigateToRecordEntry = { navController.navigate(ProcessRecordScreen.WorkRecordEntry.name) },
@@ -40,7 +69,8 @@ fun ProcessRecordNavHost(
                 navigateToRecordCopy = { recordId -> navController.navigate("${ProcessRecordScreen.WorkRecordEntry.name}?copyFromId=$recordId") },
                 navigateToProcessList = { navController.navigate(ProcessRecordScreen.ProcessList.name) },
                 navigateToStyleManage = { navController.navigate(ProcessRecordScreen.StyleManage.name) },
-                navigateToBackup = { navController.navigate(ProcessRecordScreen.Backup.name) }
+                navigateToBackup = { navController.navigate(ProcessRecordScreen.Backup.name) },
+                navigateToPinSetup = { navController.navigate(ProcessRecordScreen.PinSetup.name) }
             )
         }
         composable(route = ProcessRecordScreen.ProcessList.name) {
