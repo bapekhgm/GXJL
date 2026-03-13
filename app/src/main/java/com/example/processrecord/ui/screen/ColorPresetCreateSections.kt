@@ -1,25 +1,35 @@
 package com.example.processrecord.ui.screen
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.processrecord.R
+import com.example.processrecord.ui.component.AppPrimaryButton
+import com.example.processrecord.ui.component.AppSecondaryButton
+import com.example.processrecord.ui.component.AppDropdownMenu
+import com.example.processrecord.ui.component.AppDropdownMenuItem
 import com.example.processrecord.data.entity.ColorGroup
+import com.example.processrecord.ui.component.EnhancedTextField
 
 @Composable
 fun ColorPresetCreateSection(
@@ -34,72 +44,115 @@ fun ColorPresetCreateSection(
     onPickColorClick: () -> Unit,
     onSaveColorClick: () -> Unit
 ) {
-    Text(
-        text = stringResource(R.string.color_preset_create_title),
-        style = MaterialTheme.typography.titleMedium
-    )
+    val previewColor = parseColorOrDefault(previewHex)
 
-    OutlinedTextField(
-        value = newName,
-        onValueChange = onNameChange,
-        label = { Text(stringResource(R.string.color_preset_name_label)) },
-        modifier = Modifier.fillMaxWidth(),
-        singleLine = true
-    )
+    ElevatedSectionCard(gradientBackground = true) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(
+                text = stringResource(R.string.color_preset_create_title),
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface
+            )
 
-    Box(modifier = Modifier.fillMaxWidth()) {
-        OutlinedButton(
-            onClick = { onGroupPickerExpandedChange(true) },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = groups.isNotEmpty()
-        ) {
-            val selectedGroupName = groups.firstOrNull { it.id == selectedGroupId }?.name
-                ?: stringResource(R.string.color_group_select_placeholder)
-            Text(stringResource(R.string.color_group_selected_value, selectedGroupName))
-        }
+            EnhancedTextField(
+                value = newName,
+                onValueChange = onNameChange,
+                label = { Text(stringResource(R.string.color_preset_name_label)) },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
 
-        DropdownMenu(
-            expanded = showGroupPicker,
-            onDismissRequest = { onGroupPickerExpandedChange(false) }
-        ) {
-            groups.forEach { group ->
-                DropdownMenuItem(
-                    text = { Text(group.name) },
-                    onClick = {
-                        onGroupSelected(group.id)
-                        onGroupPickerExpandedChange(false)
+            Box(modifier = Modifier.fillMaxWidth()) {
+                val selectedGroupName = groups.firstOrNull { it.id == selectedGroupId }?.name
+                    ?: stringResource(R.string.color_group_select_placeholder)
+                AppSecondaryButton(
+                    text = stringResource(R.string.color_group_selected_value, selectedGroupName),
+                    onClick = { onGroupPickerExpandedChange(true) },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = groups.isNotEmpty()
+                )
+
+                AppDropdownMenu(
+                    expanded = showGroupPicker,
+                    onDismissRequest = { onGroupPickerExpandedChange(false) }
+                ) {
+                    groups.forEach { group ->
+                        AppDropdownMenuItem(
+                            text = group.name,
+                            onClick = {
+                                onGroupSelected(group.id)
+                                onGroupPickerExpandedChange(false)
+                            },
+                            selected = group.id == selectedGroupId
+                        )
                     }
+                }
+            }
+
+            CompactCard {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .background(
+                                brush = Brush.linearGradient(
+                                    colors = listOf(
+                                        previewColor,
+                                        previewColor.copy(alpha = 0.75f)
+                                    )
+                                ),
+                                shape = CircleShape
+                            )
+                            .border(
+                                width = 1.dp,
+                                color = MaterialTheme.colorScheme.surface,
+                                shape = CircleShape
+                            )
+                    )
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.color_preset_preview_value, previewHex),
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = groups.firstOrNull { it.id == selectedGroupId }?.name
+                                ?: stringResource(R.string.color_group_select_placeholder),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                AppSecondaryButton(
+                    text = stringResource(R.string.color_preset_pick_color),
+                    onClick = onPickColorClick,
+                    modifier = Modifier.weight(1f)
+                )
+                AppPrimaryButton(
+                    text = stringResource(R.string.color_preset_save_color),
+                    onClick = onSaveColorClick,
+                    modifier = Modifier.weight(1f),
+                    enabled = newName.isNotBlank() && selectedGroupId != null
                 )
             }
         }
-    }
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(28.dp)
-                .background(parseColorOrDefault(previewHex), RoundedCornerShape(50))
-        )
-        Text(stringResource(R.string.color_preset_preview_value, previewHex))
-    }
-
-    OutlinedButton(
-        onClick = onPickColorClick,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Text(stringResource(R.string.color_preset_pick_color))
-    }
-
-    OutlinedButton(
-        onClick = onSaveColorClick,
-        modifier = Modifier.fillMaxWidth(),
-        enabled = newName.isNotBlank() && selectedGroupId != null
-    ) {
-        Text(stringResource(R.string.color_preset_save_color))
     }
 }
 
@@ -109,24 +162,32 @@ fun ColorGroupManageSection(
     onNewGroupNameChange: (String) -> Unit,
     onAddGroupClick: () -> Unit
 ) {
-    Text(
-        text = stringResource(R.string.color_group_manage_title),
-        style = MaterialTheme.typography.titleMedium
-    )
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-        OutlinedTextField(
-            value = newGroupName,
-            onValueChange = onNewGroupNameChange,
-            label = { Text(stringResource(R.string.color_group_new_name_label)) },
-            modifier = Modifier.weight(1f),
-            singleLine = true
-        )
-        OutlinedButton(
-            onClick = onAddGroupClick,
-            enabled = newGroupName.isNotBlank(),
-            modifier = Modifier.align(Alignment.CenterVertically)
+    SectionCard {
+        SectionHeader(title = stringResource(R.string.color_group_manage_title)) {
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = null
+            )
+        }
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
         ) {
-            Text(stringResource(R.string.color_group_add_button))
+            EnhancedTextField(
+                value = newGroupName,
+                onValueChange = onNewGroupNameChange,
+                label = { Text(stringResource(R.string.color_group_new_name_label)) },
+                modifier = Modifier.weight(1f),
+                singleLine = true
+            )
+            AppPrimaryButton(
+                text = stringResource(R.string.color_group_add_button),
+                onClick = onAddGroupClick,
+                enabled = newGroupName.isNotBlank(),
+                modifier = Modifier.align(Alignment.CenterVertically),
+                height = 48.dp
+            )
         }
     }
 }

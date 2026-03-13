@@ -52,9 +52,9 @@ class ColorPickerController internal constructor(
 
 @Composable
 fun rememberColorPickerController(
-    initialRed: Float = 244f,
-    initialGreen: Float = 67f,
-    initialBlue: Float = 54f
+    initialRed: Float = 30f,
+    initialGreen: Float = 136f,
+    initialBlue: Float = 229f
 ): ColorPickerController {
     return remember {
         ColorPickerController(

@@ -1,39 +1,46 @@
 package com.example.processrecord.ui.screen
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.processrecord.R
 import com.example.processrecord.data.entity.Process
 import com.example.processrecord.ui.AppViewModelProvider
+import com.example.processrecord.ui.component.AppFloatingButton
+import com.example.processrecord.ui.component.AppSelectableRow
+import com.example.processrecord.ui.component.AppTopBar
+import com.example.processrecord.ui.component.ChromeIconButton
+import com.example.processrecord.ui.component.EmptyStateCard
 import com.example.processrecord.ui.viewmodel.ProcessListViewModel
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProcessListScreen(
     navigateBack: () -> Unit,
@@ -44,29 +51,26 @@ fun ProcessListScreen(
     val processListUiState by viewModel.processListUiState.collectAsState()
 
     Scaffold(
+        containerColor = Color.Transparent,
         topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text(stringResource(R.string.process_list_title)) },
+            AppTopBar(
+                title = stringResource(R.string.process_list_title),
+                subtitle = stringResource(R.string.process_list_subtitle),
                 navigationIcon = {
-                    IconButton(onClick = navigateBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.process_list_back_content_description)
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
-                )
+                    ChromeIconButton(
+                        onClick = navigateBack,
+                        icon = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = stringResource(R.string.process_list_back_content_description)
+                    )
+                }
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = navigateToProcessEntry) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = stringResource(R.string.process_list_add_content_description)
-                )
-            }
+            AppFloatingButton(
+                onClick = navigateToProcessEntry,
+                icon = Icons.Default.Add,
+                contentDescription = stringResource(R.string.process_list_add_content_description)
+            )
         }
     ) { innerPadding ->
         ProcessListBody(
@@ -84,21 +88,30 @@ fun ProcessListBody(
     modifier: Modifier = Modifier
 ) {
     if (processList.isEmpty()) {
-        Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text(
-                text = stringResource(R.string.process_list_empty),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+        Box(
+            modifier = modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            EmptyStateCard(
+                title = stringResource(R.string.process_list_title),
+                subtitle = stringResource(R.string.process_list_empty),
+                icon = Icons.AutoMirrored.Filled.List,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
             )
         }
     } else {
-        LazyColumn(modifier = modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 96.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
             items(items = processList, key = { it.id }) { process ->
                 ProcessItem(
                     process = process,
-                    modifier = Modifier.clickable { onProcessClick(process.id) }
+                    onClick = { onProcessClick(process.id) }
                 )
-                HorizontalDivider()
             }
         }
     }
@@ -107,26 +120,42 @@ fun ProcessListBody(
 @Composable
 fun ProcessItem(
     process: Process,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    ListItem(
-        headlineContent = { Text(process.name) },
-        supportingContent = {
-            Text(
-                stringResource(
-                    R.string.process_price_per_unit,
-                    formatProcessPriceValue(process.defaultPrice),
-                    process.unit
+    AppSelectableRow(
+        title = process.name,
+        subtitle = stringResource(
+            R.string.process_price_per_unit,
+            formatProcessPriceValue(process.defaultPrice),
+            process.unit
+        ),
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth(),
+        emphasized = true,
+        leadingContent = {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(
+                        MaterialTheme.colorScheme.primaryContainer,
+                        CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = process.name.take(1),
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.primary
                 )
-            )
+            }
         },
         trailingContent = {
             Icon(
-                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = stringResource(R.string.process_list_edit_content_description),
-                tint = MaterialTheme.colorScheme.outline
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
-        },
-        modifier = modifier
+        }
     )
 }

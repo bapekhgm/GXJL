@@ -23,10 +23,17 @@ interface WorkRecordDao {
     @Query("SELECT SUM(amount) FROM work_records WHERE date >= :startDate AND date <= :endDate")
     fun getTotalAmountByDateRange(startDate: Long, endDate: Long): Flow<Long?>
 
-    @Query("SELECT style, SUM(amount) as totalAmount FROM work_records GROUP BY style ORDER BY totalAmount DESC")
+    @Query(
+        "SELECT style, SUM(amount) as totalAmount, SUM(totalQuantity) as totalQuantity " +
+            "FROM work_records GROUP BY style ORDER BY totalAmount DESC"
+    )
     fun getStatsByStyle(): Flow<List<StyleStat>>
 
-    @Query("SELECT style, SUM(amount) as totalAmount FROM work_records WHERE date >= :startDate AND date <= :endDate GROUP BY style ORDER BY totalAmount DESC")
+    @Query(
+        "SELECT style, SUM(amount) as totalAmount, SUM(totalQuantity) as totalQuantity " +
+            "FROM work_records WHERE date >= :startDate AND date <= :endDate " +
+            "GROUP BY style ORDER BY totalAmount DESC"
+    )
     fun getStatsByStyleForRange(startDate: Long, endDate: Long): Flow<List<StyleStat>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -40,6 +47,9 @@ interface WorkRecordDao {
 
     @Query("SELECT * FROM work_records WHERE id = :id")
     suspend fun getRecordById(id: Long): WorkRecord?
+
+    @Query("SELECT * FROM work_records ORDER BY createTime DESC, id DESC LIMIT 1")
+    suspend fun getLatestRecord(): WorkRecord?
 
     /** 查询指定月份内有记录的时间戳（由上层统一按本地时区折叠到天） */
     @Query("""
@@ -115,5 +125,6 @@ interface WorkRecordDao {
 
 data class StyleStat(
     val style: String,
-    val totalAmount: Long
+    val totalAmount: Long,
+    val totalQuantity: Long
 )

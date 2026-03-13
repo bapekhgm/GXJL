@@ -1,11 +1,10 @@
 package com.example.processrecord.ui.screen
 
-import android.app.DatePickerDialog
-import android.app.TimePickerDialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,61 +20,59 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.processrecord.R
+import com.example.processrecord.ui.component.AppTimePickerDialog
+import com.example.processrecord.ui.component.RecordCalendarDialog
+import com.example.processrecord.ui.theme.AppTextFieldShape
+import com.example.processrecord.ui.theme.appOutlinedTextFieldColors
 import com.example.processrecord.ui.viewmodel.WorkRecordDetails
 import java.util.Calendar
+
+private enum class RecordTimeFieldTarget {
+    Start,
+    End
+}
 
 @Composable
 fun RecordTimeSectionCard(
     workRecordDetails: WorkRecordDetails,
     onValueChange: (WorkRecordDetails) -> Unit
 ) {
-    val context = LocalContext.current
     val calendar = Calendar.getInstance()
+    val startFieldInteractionSource = remember { MutableInteractionSource() }
+    val startNowInteractionSource = remember { MutableInteractionSource() }
+    val endFieldInteractionSource = remember { MutableInteractionSource() }
+    var pendingTarget by remember { mutableStateOf<RecordTimeFieldTarget?>(null) }
+    var showCalendarDialog by remember { mutableStateOf(false) }
+    var showTimeDialog by remember { mutableStateOf(false) }
+    var pendingDateMillis by remember { mutableStateOf<Long?>(null) }
+    var calendarYear by remember { mutableStateOf(calendar.get(Calendar.YEAR)) }
+    var calendarMonth by remember { mutableStateOf(calendar.get(Calendar.MONTH)) }
 
-    fun showDateTimePicker(isStartTime: Boolean) {
-        val initialTime = if (isStartTime) workRecordDetails.startTime else workRecordDetails.endTime
-        if (initialTime > 0) {
-            calendar.timeInMillis = initialTime
+    fun openDateTimePicker(target: RecordTimeFieldTarget) {
+        val initialTime = when (target) {
+            RecordTimeFieldTarget.Start -> workRecordDetails.startTime
+            RecordTimeFieldTarget.End -> workRecordDetails.endTime
+        }
+        calendar.timeInMillis = if (initialTime > 0L) {
+            initialTime
         } else {
-            calendar.timeInMillis = System.currentTimeMillis()
+            System.currentTimeMillis()
         }
-
-        val dateListener = DatePickerDialog.OnDateSetListener { _, year, month, dayOfMonth ->
-            calendar.set(Calendar.YEAR, year)
-            calendar.set(Calendar.MONTH, month)
-            calendar.set(Calendar.DAY_OF_MONTH, dayOfMonth)
-
-            TimePickerDialog(
-                context,
-                { _, hourOfDay, minute ->
-                    calendar.set(Calendar.HOUR_OF_DAY, hourOfDay)
-                    calendar.set(Calendar.MINUTE, minute)
-                    val timestamp = calendar.timeInMillis
-                    if (isStartTime) {
-                        onValueChange(workRecordDetails.copy(startTime = timestamp))
-                    } else {
-                        onValueChange(workRecordDetails.copy(endTime = timestamp))
-                    }
-                },
-                calendar.get(Calendar.HOUR_OF_DAY),
-                calendar.get(Calendar.MINUTE),
-                true
-            ).show()
-        }
-
-        DatePickerDialog(
-            context,
-            dateListener,
-            calendar.get(Calendar.YEAR),
-            calendar.get(Calendar.MONTH),
-            calendar.get(Calendar.DAY_OF_MONTH)
-        ).show()
+        pendingTarget = target
+        pendingDateMillis = null
+        calendarYear = calendar.get(Calendar.YEAR)
+        calendarMonth = calendar.get(Calendar.MONTH)
+        showCalendarDialog = true
     }
 
     SectionCard {
@@ -83,8 +80,7 @@ fun RecordTimeSectionCard(
             Icon(
                 imageVector = Icons.Default.PlayArrow,
                 contentDescription = null,
-                modifier = Modifier.size(16.dp),
-                tint = MaterialTheme.colorScheme.primary
+                modifier = Modifier.size(16.dp)
             )
         }
 
@@ -99,24 +95,42 @@ fun RecordTimeSectionCard(
                         if (workRecordDetails.startTime == 0L) {
                             Icon(
                                 Icons.Default.PlayArrow,
-                                contentDescription = stringResource(R.string.work_record_start_now),
-                                modifier = Modifier.clickable {
-                                    onValueChange(workRecordDetails.copy(startTime = System.currentTimeMillis()))
-                                }
+                                contentDescription = stringResource(R.string.work_record_start_now)
                             )
                         } else {
                             Icon(Icons.Default.DateRange, contentDescription = null)
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = AppTextFieldShape,
+                    colors = appOutlinedTextFieldColors()
                 )
                 Box(
                     modifier = Modifier
                         .matchParentSize()
-                        .padding(top = 8.dp, end = 40.dp)
-                        .clickable { showDateTimePicker(true) }
+                        .clickable(
+                            interactionSource = startFieldInteractionSource,
+                            indication = null
+                        ) {
+                            openDateTimePicker(RecordTimeFieldTarget.Start)
+                        }
                 )
+                if (workRecordDetails.startTime == 0L) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .padding(end = 8.dp)
+                            .size(48.dp)
+                            .clickable(
+                                interactionSource = startNowInteractionSource,
+                                indication = null
+                            ) {
+                                onValueChange(
+                                    workRecordDetails.copy(startTime = System.currentTimeMillis())
+                                )
+                            }
+                    )
+                }
             }
 
             Box(modifier = Modifier.weight(1f)) {
@@ -127,13 +141,18 @@ fun RecordTimeSectionCard(
                     label = { Text(stringResource(R.string.work_record_label_end_time)) },
                     trailingIcon = { Icon(Icons.Default.DateRange, contentDescription = null) },
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = AppTextFieldShape,
+                    colors = appOutlinedTextFieldColors()
                 )
                 Box(
                     modifier = Modifier
                         .matchParentSize()
-                        .padding(top = 8.dp)
-                        .clickable { showDateTimePicker(false) }
+                        .clickable(
+                            interactionSource = endFieldInteractionSource,
+                            indication = null
+                        ) {
+                            openDateTimePicker(RecordTimeFieldTarget.End)
+                        }
                 )
             }
         }
@@ -177,5 +196,66 @@ fun RecordTimeSectionCard(
             }
         }
     }
-}
 
+    val selectedTimeMillis = when (pendingTarget) {
+        RecordTimeFieldTarget.Start -> workRecordDetails.startTime
+        RecordTimeFieldTarget.End -> workRecordDetails.endTime
+        null -> 0L
+    }
+
+    if (showCalendarDialog && pendingTarget != null) {
+        RecordCalendarDialog(
+            selectedDate = if (selectedTimeMillis > 0L) selectedTimeMillis else System.currentTimeMillis(),
+            calendarYear = calendarYear,
+            calendarMonth = calendarMonth,
+            recordDates = emptySet<String>(),
+            onDismiss = {
+                showCalendarDialog = false
+                pendingTarget = null
+                pendingDateMillis = null
+            },
+            onDateSelected = { selectedDate ->
+                pendingDateMillis = selectedDate
+                showCalendarDialog = false
+                showTimeDialog = true
+            },
+            onMonthChanged = { year, month ->
+                calendarYear = year
+                calendarMonth = month
+            }
+        )
+    }
+
+    val pickedDate = pendingDateMillis
+    if (showTimeDialog && pendingTarget != null && pickedDate != null) {
+        AppTimePickerDialog(
+            initialTimeMillis = selectedTimeMillis,
+            selectedDateMillis = pickedDate,
+            onDismiss = {
+                showTimeDialog = false
+                pendingTarget = null
+                pendingDateMillis = null
+            },
+            onConfirm = { hour, minute ->
+                calendar.timeInMillis = pickedDate
+                calendar.set(Calendar.HOUR_OF_DAY, hour)
+                calendar.set(Calendar.MINUTE, minute)
+                calendar.set(Calendar.SECOND, 0)
+                calendar.set(Calendar.MILLISECOND, 0)
+                val timestamp = calendar.timeInMillis
+                when (pendingTarget) {
+                    RecordTimeFieldTarget.Start -> {
+                        onValueChange(workRecordDetails.copy(startTime = timestamp))
+                    }
+                    RecordTimeFieldTarget.End -> {
+                        onValueChange(workRecordDetails.copy(endTime = timestamp))
+                    }
+                    null -> Unit
+                }
+                showTimeDialog = false
+                pendingTarget = null
+                pendingDateMillis = null
+            }
+        )
+    }
+}

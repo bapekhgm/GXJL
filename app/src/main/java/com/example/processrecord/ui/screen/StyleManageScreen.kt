@@ -1,10 +1,11 @@
 package com.example.processrecord.ui.screen
 
 import android.widget.Toast
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,24 +14,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -39,19 +31,31 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.processrecord.R
 import com.example.processrecord.data.entity.Style
 import com.example.processrecord.ui.AppViewModelProvider
+import com.example.processrecord.ui.component.AppActionChip
+import com.example.processrecord.ui.component.AppDangerButton
+import com.example.processrecord.ui.component.AppDialogScaffold
+import com.example.processrecord.ui.component.AppFloatingButton
+import com.example.processrecord.ui.component.AppIconActionButton
+import com.example.processrecord.ui.component.AppPrimaryButton
+import com.example.processrecord.ui.component.AppSelectableRow
+import com.example.processrecord.ui.component.AppSecondaryButton
+import com.example.processrecord.ui.component.AppTopBar
+import com.example.processrecord.ui.component.ChromeIconButton
+import com.example.processrecord.ui.component.EnhancedTextField
+import com.example.processrecord.ui.component.EmptyStateCard
 import com.example.processrecord.ui.viewmodel.StyleManageViewModel
 import com.example.processrecord.ui.viewmodel.StyleManageViewModel.AddStyleResult
-
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StyleManageScreen(
     navigateBack: () -> Unit,
@@ -62,23 +66,31 @@ fun StyleManageScreen(
 
     var showAddDialog by remember { mutableStateOf(false) }
     var showBatchDialog by remember { mutableStateOf(false) }
+    var pendingDeleteStyle by remember { mutableStateOf<Style?>(null) }
 
     if (showAddDialog) {
         var inputText by remember { mutableStateOf("") }
-        AlertDialog(
+        AppDialogScaffold(
             onDismissRequest = { showAddDialog = false },
-            title = { Text(stringResource(R.string.style_manage_add_single_title)) },
-            text = {
-                OutlinedTextField(
+            title = stringResource(R.string.style_manage_add_single_title),
+            content = {
+                EnhancedTextField(
                     value = inputText,
                     onValueChange = { inputText = it },
                     label = { Text(stringResource(R.string.style_manage_name_label)) },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    autoFocus = true
                 )
             },
-            confirmButton = {
-                TextButton(
+            actions = {
+                AppSecondaryButton(
+                    text = stringResource(R.string.common_cancel),
+                    onClick = { showAddDialog = false },
+                    height = 44.dp
+                )
+                AppPrimaryButton(
+                    text = stringResource(R.string.style_manage_add_button),
                     onClick = {
                         viewModel.addStyle(inputText) { result ->
                             val message = when (result) {
@@ -105,25 +117,19 @@ fun StyleManageScreen(
                                 showAddDialog = false
                             }
                         }
-                    }
-                ) {
-                    Text(stringResource(R.string.style_manage_add_button))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showAddDialog = false }) {
-                    Text(stringResource(R.string.common_cancel))
-                }
+                    },
+                    height = 44.dp
+                )
             }
         )
     }
 
     if (showBatchDialog) {
         var batchText by remember { mutableStateOf("") }
-        AlertDialog(
+        AppDialogScaffold(
             onDismissRequest = { showBatchDialog = false },
-            title = { Text(stringResource(R.string.style_manage_batch_title)) },
-            text = {
+            title = stringResource(R.string.style_manage_batch_title),
+            content = {
                 Column {
                     Text(
                         text = stringResource(R.string.style_manage_batch_hint),
@@ -131,18 +137,26 @@ fun StyleManageScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
+                    EnhancedTextField(
                         value = batchText,
                         onValueChange = { batchText = it },
                         label = { Text(stringResource(R.string.style_manage_batch_list_label)) },
+                        singleLine = false,
                         minLines = 4,
                         maxLines = 8,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        autoFocus = true
                     )
                 }
             },
-            confirmButton = {
-                TextButton(
+            actions = {
+                AppSecondaryButton(
+                    text = stringResource(R.string.common_cancel),
+                    onClick = { showBatchDialog = false },
+                    height = 44.dp
+                )
+                AppPrimaryButton(
+                    text = stringResource(R.string.style_manage_add_button),
                     onClick = {
                         viewModel.batchAddStyles(batchText) { added, skipped ->
                             val msg = if (skipped > 0) {
@@ -162,68 +176,84 @@ fun StyleManageScreen(
                             Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                             showBatchDialog = false
                         }
-                    }
-                ) {
-                    Text(stringResource(R.string.style_manage_add_button))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showBatchDialog = false }) {
-                    Text(stringResource(R.string.common_cancel))
-                }
+                    },
+                    height = 44.dp
+                )
+            }
+        )
+    }
+
+    pendingDeleteStyle?.let { style ->
+        AppDialogScaffold(
+            onDismissRequest = { pendingDeleteStyle = null },
+            title = stringResource(R.string.style_manage_delete_confirm_title),
+            supportingText = context.getString(R.string.style_manage_delete_confirm_message, style.name),
+            actions = {
+                AppSecondaryButton(
+                    text = stringResource(R.string.common_cancel),
+                    onClick = { pendingDeleteStyle = null },
+                    height = 44.dp
+                )
+                AppDangerButton(
+                    text = stringResource(R.string.common_delete),
+                    onClick = {
+                        viewModel.deleteStyle(style)
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.style_manage_delete_toast, style.name),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        pendingDeleteStyle = null
+                    },
+                    height = 44.dp
+                )
             }
         )
     }
 
     Scaffold(
+        containerColor = Color.Transparent,
         topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text(stringResource(R.string.style_manage_title)) },
+            AppTopBar(
+                title = stringResource(R.string.style_manage_title),
+                subtitle = stringResource(R.string.style_manage_subtitle),
                 navigationIcon = {
-                    IconButton(onClick = navigateBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.common_back)
-                        )
-                    }
+                    ChromeIconButton(
+                        onClick = navigateBack,
+                        icon = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = stringResource(R.string.common_back)
+                    )
                 },
                 actions = {
-                    TextButton(onClick = { showBatchDialog = true }) {
-                        Text(stringResource(R.string.style_manage_batch_action))
-                    }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.primary
-                )
+                    AppActionChip(
+                        text = stringResource(R.string.style_manage_batch_action),
+                        onClick = { showBatchDialog = true }
+                    )
+                }
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
+            AppFloatingButton(
                 onClick = { showAddDialog = true },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary
-            ) {
-                Icon(
-                    Icons.Default.Add,
-                    contentDescription = stringResource(R.string.style_manage_fab_add_content_description)
-                )
-            }
+                icon = Icons.Default.Add,
+                contentDescription = stringResource(R.string.style_manage_fab_add_content_description)
+            )
         }
     ) { innerPadding ->
         if (styleList.isEmpty()) {
-            Column(
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+                contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = stringResource(R.string.style_manage_empty),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center
+                EmptyStateCard(
+                    title = stringResource(R.string.style_manage_title),
+                    subtitle = stringResource(R.string.style_manage_empty),
+                    icon = Icons.Default.Add,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp)
                 )
             }
         } else {
@@ -241,7 +271,7 @@ fun StyleManageScreen(
                             styleList.size,
                             styleList.size
                         ),
-                        style = MaterialTheme.typography.labelMedium,
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = 4.dp)
                     )
@@ -250,12 +280,7 @@ fun StyleManageScreen(
                     StyleItem(
                         style = style,
                         onDelete = {
-                            viewModel.deleteStyle(style)
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.style_manage_delete_toast, style.name),
-                                Toast.LENGTH_SHORT
-                            ).show()
+                            pendingDeleteStyle = style
                         }
                     )
                 }
@@ -269,34 +294,37 @@ private fun StyleItem(
     style: Style,
     onDelete: () -> Unit
 ) {
-    Card(
+    AppSelectableRow(
+        title = style.name,
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = style.name,
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.weight(1f)
-            )
-            IconButton(
-                onClick = onDelete,
-                modifier = Modifier.size(36.dp)
+        emphasized = true,
+        leadingContent = {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(
+                        MaterialTheme.colorScheme.primaryContainer,
+                        shape = CircleShape
+                    ),
+                contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    Icons.Default.Delete,
-                    contentDescription = stringResource(R.string.style_manage_delete_content_description),
-                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
-                    modifier = Modifier.size(20.dp)
+                Text(
+                    text = style.name.take(1),
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
+        },
+        trailingContent = {
+            AppIconActionButton(
+                onClick = onDelete,
+                icon = Icons.Default.Delete,
+                contentDescription = stringResource(R.string.style_manage_delete_content_description),
+                tint = MaterialTheme.colorScheme.error,
+                containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.24f),
+                borderColor = MaterialTheme.colorScheme.error.copy(alpha = 0.22f),
+                size = 36.dp
+            )
         }
-    }
+    )
 }

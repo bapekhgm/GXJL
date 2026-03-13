@@ -6,6 +6,8 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 import java.util.Calendar
 
+internal const val DEFAULT_PROCESS_UNIT = "件"
+
 // Process extensions.
 fun Process.toProcessDetails(): ProcessDetails = ProcessDetails(
     id = id,
@@ -19,7 +21,7 @@ fun ProcessDetails.toProcess(): Process = Process(
     id = id,
     name = name,
     defaultPrice = normalizeDecimalInput(defaultPrice).toDoubleOrNull() ?: 0.0,
-    unit = unit,
+    unit = normalizeProcessUnit(unit),
     isActive = isActive
 )
 
@@ -103,6 +105,9 @@ internal fun yuanToCents(yuanString: String): Long {
 
 internal fun normalizeDecimalInput(input: String): String =
     input.trim().replace(',', '.')
+
+internal fun normalizeProcessUnit(input: String): String =
+    input.trim().ifEmpty { DEFAULT_PROCESS_UNIT }
 
 private fun normalizeToDayStart(timestamp: Long): Long {
     if (timestamp <= 0L) return timestamp

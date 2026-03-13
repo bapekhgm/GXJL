@@ -31,10 +31,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -57,6 +55,8 @@ import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.processrecord.R
+import com.example.processrecord.ui.component.AppActionChip
+import com.example.processrecord.ui.component.AppIconActionButton
 import com.example.processrecord.ui.utils.ImageUtils
 import com.example.processrecord.ui.viewmodel.WorkRecordDetails
 import kotlinx.coroutines.launch
@@ -189,34 +189,18 @@ fun RecordImageSectionCard(
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            TextButton(
-                onClick = { launchCamera() },
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                    horizontal = 8.dp,
-                    vertical = 4.dp
-                )
-            ) {
-                Text(
-                    text = stringResource(R.string.work_record_button_camera),
-                    style = MaterialTheme.typography.labelMedium
-                )
-            }
-            TextButton(
+            AppActionChip(
+                text = stringResource(R.string.work_record_button_camera),
+                onClick = { launchCamera() }
+            )
+            AppActionChip(
+                text = stringResource(R.string.work_record_button_gallery),
                 onClick = {
                     photoPickerLauncher.launch(
                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                     )
-                },
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                    horizontal = 8.dp,
-                    vertical = 4.dp
-                )
-            ) {
-                Text(
-                    text = stringResource(R.string.work_record_button_gallery),
-                    style = MaterialTheme.typography.labelMedium
-                )
-            }
+                }
+            )
         }
     }
 
@@ -345,7 +329,7 @@ fun RecordImageSectionCard(
                         .padding(16.dp)
                         .zIndex(1f)
                 ) {
-                    IconButton(
+                    AppIconActionButton(
                         onClick = {
                             val currentPath = workRecordDetails.imagePaths[pagerState.currentPage]
                             val newPaths = workRecordDetails.imagePaths.toMutableList()
@@ -355,24 +339,30 @@ fun RecordImageSectionCard(
                             if (newPaths.isEmpty()) {
                                 showGallery = false
                             }
-                        }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = stringResource(
-                                R.string.work_record_delete_image_content_description
-                            ),
-                            tint = Color.White
-                        )
-                    }
+                        },
+                        icon = Icons.Default.Delete,
+                        contentDescription = stringResource(
+                            R.string.work_record_delete_image_content_description
+                        ),
+                        modifier = Modifier.background(Color.Transparent),
+                        tint = Color.White,
+                        containerColor = Color.Black.copy(alpha = 0.42f),
+                        borderColor = Color.White.copy(alpha = 0.12f),
+                        size = 40.dp
+                    )
 
-                    IconButton(onClick = { showGallery = false }) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = stringResource(R.string.common_close),
-                            tint = Color.White
-                        )
-                    }
+                    AppIconActionButton(
+                        onClick = { showGallery = false },
+                        modifier = Modifier
+                            .padding(start = 8.dp)
+                            .background(Color.Transparent),
+                        icon = Icons.Default.Close,
+                        contentDescription = stringResource(R.string.common_close),
+                        tint = Color.White,
+                        containerColor = Color.Black.copy(alpha = 0.42f),
+                        borderColor = Color.White.copy(alpha = 0.12f),
+                        size = 40.dp
+                    )
                 }
             }
         }

@@ -7,20 +7,25 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.processrecord.R
+import com.example.processrecord.ui.component.AppDangerButton
+import com.example.processrecord.ui.component.AppDialogScaffold
+import com.example.processrecord.ui.component.AppPrimaryButton
+import com.example.processrecord.ui.component.AppSecondaryButton
 import com.example.processrecord.data.entity.ColorGroup
 import com.example.processrecord.data.entity.ColorPreset
+import com.example.processrecord.ui.component.EnhancedTextField
 
 @Composable
 fun DeleteColorPresetDialog(
@@ -30,26 +35,24 @@ fun DeleteColorPresetDialog(
 ) {
     if (preset == null) return
 
-    AlertDialog(
+    AppDialogScaffold(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.color_preset_delete_title)) },
-        text = {
-            Text(
-                stringResource(
-                    R.string.color_preset_delete_message,
-                    preset.name
-                )
+        title = stringResource(R.string.color_preset_delete_title),
+        supportingText = stringResource(
+            R.string.color_preset_delete_message,
+            preset.name
+        ),
+        actions = {
+            AppSecondaryButton(
+                text = stringResource(R.string.common_cancel),
+                onClick = onDismiss,
+                height = 44.dp
             )
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(preset) }) {
-                Text(stringResource(R.string.common_delete))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.common_cancel))
-            }
+            AppDangerButton(
+                text = stringResource(R.string.common_delete),
+                onClick = { onConfirm(preset) },
+                height = 44.dp
+            )
         }
     )
 }
@@ -66,12 +69,12 @@ fun EditColorPresetDialog(
 ) {
     if (preset == null) return
 
-    AlertDialog(
+    AppDialogScaffold(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.color_preset_edit_title)) },
-        text = {
+        title = stringResource(R.string.color_preset_edit_title),
+        content = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
+                EnhancedTextField(
                     value = editName,
                     onValueChange = onEditNameChange,
                     label = { Text(stringResource(R.string.color_preset_name_label)) },
@@ -85,31 +88,42 @@ fun EditColorPresetDialog(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(24.dp)
-                            .background(parseColorOrDefault(editHex), RoundedCornerShape(50))
+                            .size(28.dp)
+                            .background(
+                                brush = Brush.linearGradient(
+                                    colors = listOf(
+                                        parseColorOrDefault(editHex),
+                                        parseColorOrDefault(editHex).copy(alpha = 0.72f)
+                                    )
+                                ),
+                                shape = CircleShape
+                            )
                     )
-                    Text(stringResource(R.string.color_preset_preview_value, editHex))
+                    Text(
+                        text = stringResource(R.string.color_preset_preview_value, editHex),
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold)
+                    )
                 }
-                OutlinedButton(
+                AppSecondaryButton(
+                    text = stringResource(R.string.color_preset_pick_color),
                     onClick = onPickColorClick,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(stringResource(R.string.color_preset_pick_color))
-                }
+                    modifier = Modifier.fillMaxWidth(),
+                    height = 48.dp
+                )
             }
         },
-        confirmButton = {
-            TextButton(
+        actions = {
+            AppSecondaryButton(
+                text = stringResource(R.string.common_cancel),
+                onClick = onDismiss,
+                height = 44.dp
+            )
+            AppPrimaryButton(
+                text = stringResource(R.string.common_save),
                 onClick = { onConfirm(preset, editName, editHex) },
-                enabled = editName.isNotBlank()
-            ) {
-                Text(stringResource(R.string.common_save))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.common_cancel))
-            }
+                enabled = editName.isNotBlank(),
+                height = 44.dp
+            )
         }
     )
 }
@@ -124,11 +138,11 @@ fun EditColorGroupDialog(
 ) {
     if (group == null) return
 
-    AlertDialog(
+    AppDialogScaffold(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.color_group_edit_title)) },
-        text = {
-            OutlinedTextField(
+        title = stringResource(R.string.color_group_edit_title),
+        content = {
+            EnhancedTextField(
                 value = editGroupName,
                 onValueChange = onEditGroupNameChange,
                 label = { Text(stringResource(R.string.color_group_name_label)) },
@@ -136,18 +150,18 @@ fun EditColorGroupDialog(
                 singleLine = true
             )
         },
-        confirmButton = {
-            TextButton(
+        actions = {
+            AppSecondaryButton(
+                text = stringResource(R.string.common_cancel),
+                onClick = onDismiss,
+                height = 44.dp
+            )
+            AppPrimaryButton(
+                text = stringResource(R.string.common_save),
                 onClick = { onConfirm(group, editGroupName) },
-                enabled = editGroupName.isNotBlank()
-            ) {
-                Text(stringResource(R.string.common_save))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.common_cancel))
-            }
+                enabled = editGroupName.isNotBlank(),
+                height = 44.dp
+            )
         }
     )
 }
@@ -160,26 +174,24 @@ fun DeleteColorGroupDialog(
 ) {
     if (group == null) return
 
-    AlertDialog(
+    AppDialogScaffold(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.color_group_delete_title)) },
-        text = {
-            Text(
-                stringResource(
-                    R.string.color_group_delete_message,
-                    group.name
-                )
+        title = stringResource(R.string.color_group_delete_title),
+        supportingText = stringResource(
+            R.string.color_group_delete_message,
+            group.name
+        ),
+        actions = {
+            AppSecondaryButton(
+                text = stringResource(R.string.common_cancel),
+                onClick = onDismiss,
+                height = 44.dp
             )
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(group) }) {
-                Text(stringResource(R.string.common_delete))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.common_cancel))
-            }
+            AppDangerButton(
+                text = stringResource(R.string.common_delete),
+                onClick = { onConfirm(group) },
+                height = 44.dp
+            )
         }
     )
 }

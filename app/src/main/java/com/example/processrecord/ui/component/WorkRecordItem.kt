@@ -1,7 +1,10 @@
 package com.example.processrecord.ui.component
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,29 +17,37 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.graphics.toColorInt
 import com.example.processrecord.R
 import com.example.processrecord.data.entity.WorkRecord
 import com.example.processrecord.data.entity.WorkRecordColorItem
+import com.example.processrecord.ui.component.AppActionChip
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+// ───────────────────────────────────────────────────────────
+// 辅助函数
+// ───────────────────────────────────────────────────────────
 
 internal fun parseHexColor(hex: String): Color? = try {
     Color(hex.toColorInt())
@@ -49,6 +60,15 @@ internal fun Color.isLight(): Boolean {
     return luminance > 0.6f
 }
 
+// ───────────────────────────────────────────────────────────
+// 工作记录卡片组件 - 精美样式
+// ───────────────────────────────────────────────────────────
+
+enum class WorkRecordItemDisplayMode {
+    Standard,
+    LargeDaily
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun WorkRecordItem(
@@ -56,9 +76,11 @@ fun WorkRecordItem(
     colorItems: List<WorkRecordColorItem> = emptyList(),
     onCopy: (() -> Unit)? = null,
     onClick: (() -> Unit)? = null,
+    displayMode: WorkRecordItemDisplayMode = WorkRecordItemDisplayMode.Standard,
     modifier: Modifier = Modifier
 ) {
     val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+    val isLargeDaily = displayMode == WorkRecordItemDisplayMode.LargeDaily
 
     fun fmtAmount(cents: Long): String {
         val yuan = cents / 100.0
@@ -67,71 +89,202 @@ fun WorkRecordItem(
 
     fun fmtQty(value: Long): String = value.toString()
 
+    // 交互状态
+    val interactionSource = remember { MutableInteractionSource() }
+
+    val cardShape = RoundedCornerShape(if (isLargeDaily) 22.dp else 24.dp)
+    val contentHorizontalPadding = if (isLargeDaily) 18.dp else 20.dp
+    val contentVerticalPadding = if (isLargeDaily) 14.dp else 16.dp
+    val leadingIconSize = if (isLargeDaily) 40.dp else 36.dp
+    val leadingItemSpacing = if (isLargeDaily) 8.dp else 6.dp
+    val amountBadgeShape = RoundedCornerShape(if (isLargeDaily) 18.dp else 16.dp)
+    val amountHorizontalPadding = if (isLargeDaily) 16.dp else 14.dp
+    val amountVerticalPadding = if (isLargeDaily) 9.dp else 8.dp
+    val styleTextStyle = if (isLargeDaily) {
+        MaterialTheme.typography.titleLarge.copy(
+            fontSize = 20.sp,
+            lineHeight = 24.sp,
+            fontWeight = FontWeight.Bold
+        )
+    } else {
+        MaterialTheme.typography.titleMedium.copy(
+            fontWeight = FontWeight.Bold
+        )
+    }
+    val serialTextStyle = if (isLargeDaily) {
+        MaterialTheme.typography.labelMedium
+    } else {
+        MaterialTheme.typography.labelSmall
+    }
+    val amountTextStyle = if (isLargeDaily) {
+        MaterialTheme.typography.titleLarge.copy(
+            fontSize = 20.sp,
+            lineHeight = 24.sp,
+            fontWeight = FontWeight.ExtraBold
+        )
+    } else {
+        MaterialTheme.typography.titleMedium.copy(
+            fontWeight = FontWeight.ExtraBold
+        )
+    }
+    val processTextStyle = if (isLargeDaily) {
+        MaterialTheme.typography.labelLarge.copy(
+            fontWeight = FontWeight.SemiBold
+        )
+    } else {
+        MaterialTheme.typography.labelMedium.copy(
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+    val quantityTextStyle = if (isLargeDaily) {
+        MaterialTheme.typography.bodyMedium.copy(
+            fontWeight = FontWeight.Medium
+        )
+    } else {
+        MaterialTheme.typography.bodySmall
+    }
+    val metadataTextStyle = if (isLargeDaily) {
+        MaterialTheme.typography.labelMedium
+    } else {
+        MaterialTheme.typography.labelSmall
+    }
+    val remarkTextStyle = if (isLargeDaily) {
+        MaterialTheme.typography.bodySmall
+    } else {
+        MaterialTheme.typography.labelSmall
+    }
+    val showTotalQuantity = record.totalQuantity > 0 && record.totalQuantity != record.quantity
+
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
-        shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+            .then(
+                if (onClick != null) {
+                    Modifier.clickable(
+                        interactionSource = interactionSource,
+                        indication = null
+                    ) { onClick() }
+                } else {
+                    Modifier
+                }
+            ),
+        shape = cardShape,
+        border = BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f)
+        )
     ) {
-        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Column(
+            modifier = Modifier.padding(
+                horizontal = contentHorizontalPadding,
+                vertical = contentVerticalPadding
+            )
+        ) {
+            // ───────────────────────────────────────────────
+            // 头部：款号 + 金额
+            // ───────────────────────────────────────────────
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // 款号区域
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.weight(1f),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(leadingItemSpacing)
                 ) {
-                    Text(
-                        text = "${record.style}#",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
-                    if (record.serialNumber.isNotBlank()) {
+                    // 款号图标徽章
+                    Box(
+                        modifier = Modifier
+                            .size(leadingIconSize)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
                         Text(
-                            text = record.serialNumber,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier
-                                .background(
-                                    MaterialTheme.colorScheme.surfaceContainerHigh,
-                                    RoundedCornerShape(4.dp)
-                                )
-                                .padding(horizontal = 5.dp, vertical = 1.dp)
+                            text = "#",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = MaterialTheme.colorScheme.primary
                         )
+                    }
+                    
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = record.style,
+                            style = styleTextStyle,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (record.serialNumber.isNotBlank()) {
+                            Text(
+                                text = record.serialNumber,
+                                style = serialTextStyle,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
 
-                Text(
-                    text = stringResource(R.string.work_record_value_amount, fmtAmount(record.amount)),
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
-                    color = MaterialTheme.colorScheme.primary
-                )
+                // 金额徽章
+                Box(
+                    modifier = Modifier
+                        .clip(amountBadgeShape)
+                        .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.72f))
+                        .border(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f),
+                            shape = amountBadgeShape
+                        )
+                        .padding(horizontal = amountHorizontalPadding, vertical = amountVerticalPadding)
+                ) {
+                    Text(
+                        text = stringResource(
+                            R.string.work_record_value_amount,
+                            fmtAmount(record.amount)
+                        ),
+                        style = amountTextStyle,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
-
+            Spacer(modifier = Modifier.height(10.dp))
+            // ───────────────────────────────────────────────
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(
-                    text = record.processName,
-                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                    color = Color(0xFFE53935),
+                // 工序名称徽章
+                Box(
                     modifier = Modifier
-                        .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(6.dp))
-                        .padding(horizontal = 8.dp, vertical = 2.dp)
-                )
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+                        )
+                        .border(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        .padding(horizontal = 12.dp, vertical = 5.dp)
+                ) {
+                    Text(
+                        text = record.processName,
+                        style = processTextStyle,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
 
+                // 数量 × 单价
                 if (record.quantity > 0) {
                     val quantityPriceText = if (record.unitPrice > 0) {
                         stringResource(
@@ -145,126 +298,167 @@ fun WorkRecordItem(
 
                     Text(
                         text = quantityPriceText,
-                        style = MaterialTheme.typography.bodySmall,
+                        style = quantityTextStyle,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
-                if (record.totalQuantity > 0 && record.totalQuantity != record.quantity) {
-                    Spacer(modifier = Modifier.weight(1f))
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
+            }
+
+            if (showTotalQuantity) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Box(
                         modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
                             .background(
-                                brush = Brush.horizontalGradient(
-                                    colors = listOf(
-                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
-                                        MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
-                                    )
-                                ),
-                                shape = RoundedCornerShape(20.dp)
+                                MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)
                             )
-                            .padding(horizontal = 10.dp, vertical = 3.dp)
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
                     ) {
-                        Text(
-                            text = stringResource(R.string.work_record_item_total_label),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
-                        )
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text(
-                            text = fmtQty(record.totalQuantity),
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.work_record_item_total_label),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                maxLines = 1
+                            )
+                            Text(
+                                text = fmtQty(record.totalQuantity),
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1
+                            )
+                        }
                     }
                 }
             }
 
+            // ───────────────────────────────────────────────
+            // 颜色明细
+            // ───────────────────────────────────────────────
             val hasColorItems = colorItems.isNotEmpty()
             val hasColorText = record.color.isNotBlank()
+            
             if (hasColorItems || hasColorText) {
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(10.dp))
+
                 if (hasColorItems) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         colorItems.forEach { item ->
                             val bgColor = parseHexColor(item.colorHex)
                                 ?: MaterialTheme.colorScheme.secondaryContainer
+                            
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
+                                // 颜色方块
                                 Box(
                                     modifier = Modifier
-                                        .size(16.dp)
-                                        .background(bgColor, RoundedCornerShape(3.dp))
+                                        .size(18.dp)
+                                        .clip(RoundedCornerShape(5.dp))
+                                        .background(bgColor)
+                                        .border(
+                                            width = 1.dp,
+                                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                                            shape = RoundedCornerShape(5.dp)
+                                        )
                                 )
+                                
+                                // 颜色名称
                                 Text(
                                     text = item.colorName,
-                                    style = MaterialTheme.typography.labelSmall.copy(
+                                    style = MaterialTheme.typography.labelMedium.copy(
                                         fontWeight = FontWeight.Medium
                                     ),
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
+                                
+                                // 数量徽章
                                 if (item.quantity > 0) {
-                                    Text(
-                                        text = fmtQty(item.quantity),
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            fontWeight = FontWeight.Bold
-                                        ),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    Box(
                                         modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
                                             .background(
-                                                MaterialTheme.colorScheme.surfaceContainerHigh,
-                                                RoundedCornerShape(4.dp)
+                                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
                                             )
-                                            .padding(horizontal = 5.dp, vertical = 1.dp)
-                                    )
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = fmtQty(item.quantity),
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontWeight = FontWeight.Bold
+                                            ),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                 }
+                                
+                                // 欠数徽章
                                 if (item.deficit > 0) {
-                                    Text(
-                                        text = stringResource(
-                                            R.string.work_record_item_deficit_value,
-                                            fmtQty(item.deficit)
-                                        ),
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            fontWeight = FontWeight.Bold
-                                        ),
-                                        color = Color(0xFFFF6B6B),
+                                    Box(
                                         modifier = Modifier
-                                            .background(Color(0xFFFFE5E5), RoundedCornerShape(4.dp))
-                                            .padding(horizontal = 5.dp, vertical = 1.dp)
-                                    )
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(MaterialTheme.colorScheme.errorContainer)
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = stringResource(
+                                                R.string.work_record_item_deficit_value,
+                                                fmtQty(item.deficit)
+                                            ),
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontWeight = FontWeight.Bold
+                                            ),
+                                            color = MaterialTheme.colorScheme.error
+                                        )
+                                    }
                                 }
+                                
+                                // 色号
                                 if (!item.colorCode.isNullOrBlank()) {
-                                    Text(
-                                        text = stringResource(
-                                            R.string.work_record_item_color_code_value,
-                                            item.colorCode
-                                        ),
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            fontWeight = FontWeight.Bold
-                                        ),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    Box(
                                         modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
                                             .background(
-                                                MaterialTheme.colorScheme.surfaceContainerHigh,
-                                                RoundedCornerShape(4.dp)
+                                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
                                             )
-                                            .padding(horizontal = 5.dp, vertical = 1.dp)
-                                    )
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = stringResource(
+                                                R.string.work_record_item_color_code_value,
+                                                item.colorCode
+                                            ),
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontWeight = FontWeight.Bold
+                                            ),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
                 } else {
+                    // 简单颜色列表
                     val colorList = record.color
                         .split(Regex("\\s+"))
                         .map { it.trim() }
                         .filter { it.isNotEmpty() }
+                    
                     FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         colorList.forEach { colorItem ->
                             val regex = Regex("([\\u4e00-\\u9fa5A-Za-z]+)(\\d+(?:\\.\\d+)?)?")
@@ -276,29 +470,36 @@ fun WorkRecordItem(
                             } else {
                                 name
                             }
-                            Text(
-                                text = text,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            
+                            Box(
                                 modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
                                     .background(
-                                        MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
-                                        RoundedCornerShape(4.dp)
+                                        MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
                                     )
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
+                                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                            ) {
+                                Text(
+                                    text = text,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                            }
                         }
                     }
                 }
             }
 
+            // ───────────────────────────────────────────────
+            // 时间信息
+            // ───────────────────────────────────────────────
             if (record.startTime > 0) {
-                Spacer(modifier = Modifier.height(5.dp))
+                Spacer(modifier = Modifier.height(10.dp))
                 HorizontalDivider(
                     thickness = 0.5.dp,
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
                 )
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 val dateFormat = SimpleDateFormat("MM/dd", Locale.getDefault())
                 val startDateStr = dateFormat.format(Date(record.startTime))
@@ -310,6 +511,7 @@ fun WorkRecordItem(
                 } else {
                     ""
                 }
+                
                 val durationText = if (record.endTime > record.startTime) {
                     val ms = record.endTime - record.startTime
                     val d = ms / 86_400_000L
@@ -342,51 +544,48 @@ fun WorkRecordItem(
 
                 Text(
                     text = timeLineText,
-                    style = MaterialTheme.typography.labelSmall,
+                    style = metadataTextStyle,
                     color = MaterialTheme.colorScheme.outline
                 )
             }
 
+            // ───────────────────────────────────────────────
+            // 备注
+            // ───────────────────────────────────────────────
             if (record.remark.isNotBlank()) {
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(6.dp))
                 if (record.startTime <= 0) {
                     HorizontalDivider(
                         thickness = 0.5.dp,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
                 }
                 Text(
                     text = stringResource(R.string.work_record_item_remark_prefix, record.remark),
-                    style = MaterialTheme.typography.labelSmall,
+                    style = remarkTextStyle,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
             }
 
+            // ───────────────────────────────────────────────
+            // 复制按钮
+            // ───────────────────────────────────────────────
             if (onCopy != null) {
-                Spacer(modifier = Modifier.height(2.dp))
+                Spacer(modifier = Modifier.height(4.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
                 ) {
-                    TextButton(
+                    AppActionChip(
+                        text = stringResource(R.string.work_record_item_copy_record),
                         onClick = onCopy,
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                            horizontal = 8.dp,
-                            vertical = 2.dp
-                        )
-                    ) {
-                        Text(
-                            text = stringResource(R.string.work_record_item_copy_record),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
+                        emphasized = true
+                    )
                 }
             }
         }
     }
 }
-

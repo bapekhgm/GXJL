@@ -3,13 +3,15 @@ package com.example.processrecord.ui.screen
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,63 +22,73 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.processrecord.R
 import com.example.processrecord.data.entity.WorkRecord
 import com.example.processrecord.data.entity.WorkRecordColorItem
 import com.example.processrecord.ui.AppViewModelProvider
+import com.example.processrecord.ui.component.AppDropdownMenu
+import com.example.processrecord.ui.component.AppDropdownMenuItem
+import com.example.processrecord.ui.component.AppFloatingButton
+import com.example.processrecord.ui.component.AppTopBar
+import com.example.processrecord.ui.component.ChromeIconButton
+import com.example.processrecord.ui.component.EmptyStateCard
 import com.example.processrecord.ui.component.RecordCalendarDialog
 import com.example.processrecord.ui.component.StyleStatsBody
 import com.example.processrecord.ui.component.WorkRecordItem
+import com.example.processrecord.ui.component.WorkRecordItemDisplayMode
 import com.example.processrecord.ui.viewmodel.ExportViewModel
 import com.example.processrecord.ui.viewmodel.WorkRecordListViewModel
 import com.example.processrecord.ui.viewmodel.WorkRecordStatsViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class)
+const val HOME_ADD_RECORD_BUTTON_TEST_TAG = "home_add_record_button"
+const val HOME_SELECTED_DATE_CHIP_TEST_TAG = "home_selected_date_chip"
+const val HOME_DAILY_RECORDS_TAB_TEST_TAG = "home_daily_records_tab"
+const val HOME_MONTH_STATS_TAB_TEST_TAG = "home_month_stats_tab"
+
+private val HomeFabContentBottomPadding: Dp = 112.dp
+
 @Composable
 fun HomeScreen(
-    navigateToRecordEntry: () -> Unit,
+    navigateToRecordAdd: () -> Unit,
     navigateToRecordEdit: (Long) -> Unit,
     navigateToRecordCopy: (Long) -> Unit,
     navigateToProcessList: () -> Unit,
@@ -88,30 +100,33 @@ fun HomeScreen(
 ) {
     val workRecordListUiState by listViewModel.workRecordListUiState.collectAsState()
     val selectedDate by listViewModel.selectedDate.collectAsState()
-    
-    // Calculate daily total from the current list directly.
-    val dailyTotal = workRecordListUiState.workRecordList.sumOf { it.amount }
-    
     val monthTotal by statsViewModel.currentMonthTotalAmount.collectAsState()
-    
-    // Convert cents to yuan for display.
+    val styleStats by statsViewModel.currentMonthStyleStats.collectAsState()
+    val monthRecords by statsViewModel.currentMonthRecords.collectAsState()
+    val currentMonthColorItems by statsViewModel.currentMonthColorItemsMap.collectAsState()
+
+    val dailyTotal = workRecordListUiState.workRecordList.sumOf { it.amount }
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val recordDatesInMonth by listViewModel.recordDatesInMonth.collectAsState()
+    val calendarYear by listViewModel.calendarYear.collectAsState()
+    val calendarMonth by listViewModel.calendarMonth.collectAsState()
+
+    LaunchedEffect(selectedDate) {
+        statsViewModel.updateSelectedDate(selectedDate)
+    }
+
+    var selectedOverviewTab by rememberSaveable { mutableIntStateOf(0) }
+    var isIncomeVisible by remember { mutableStateOf(false) }
+    var showExportMenu by remember { mutableStateOf(false) }
+    var exportStartDate by remember { mutableStateOf<Long?>(null) }
+    var exportEndDate by remember { mutableStateOf<Long?>(null) }
+    var showCalendarDialog by remember { mutableStateOf(false) }
+
     fun formatCentsToYuan(cents: Long): String {
         val yuan = cents / 100.0
         return String.format(Locale.getDefault(), "%.2f", yuan)
     }
-    val styleStats by statsViewModel.currentMonthStyleStats.collectAsState() // Use Monthly Stats
-    val monthRecords by statsViewModel.currentMonthRecords.collectAsState() // Records for Monthly Stats details
-    
-    var selectedTab by remember { mutableStateOf(0) } // 0: Records, 1: Stats
-    var isIncomeVisible by remember { mutableStateOf(false) } // Hidden by default
-    var showExportMenu by remember { mutableStateOf(false) }
-    var exportStartDate by remember { mutableStateOf<Long?>(null) }
-    var exportEndDate by remember { mutableStateOf<Long?>(null) }
-    
-    val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
-    val calendar = java.util.Calendar.getInstance()
-    calendar.timeInMillis = selectedDate
 
     val createExcelLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/vnd.ms-excel")
@@ -141,17 +156,13 @@ fun HomeScreen(
                         )
                     }
                 )
-                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                withContext(Dispatchers.Main.immediate) {
+                    Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                }
             }
         }
     }
-    
-    var showCalendarDialog by remember { mutableStateOf(false) }
-    val recordDatesInMonth by listViewModel.recordDatesInMonth.collectAsState()
-    val calendarYear by listViewModel.calendarYear.collectAsState()
-    val calendarMonth by listViewModel.calendarMonth.collectAsState()
 
-    // Custom calendar dialog host.
     CalendarDialogHost(
         showCalendarDialog = showCalendarDialog,
         selectedDate = selectedDate,
@@ -161,6 +172,7 @@ fun HomeScreen(
         onDismiss = { showCalendarDialog = false },
         onDateSelected = { date ->
             listViewModel.updateSelectedDate(date)
+            showCalendarDialog = false
         },
         onMonthChanged = { year, month ->
             listViewModel.setCalendarMonth(year, month)
@@ -168,41 +180,38 @@ fun HomeScreen(
     )
 
     Scaffold(
+        containerColor = Color.Transparent,
         topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text(stringResource(R.string.home_title)) },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.primary
-                ),
+            AppTopBar(
+                title = stringResource(R.string.home_title),
+                subtitle = stringResource(R.string.home_overview_subtitle),
                 actions = {
                     Box {
-                        IconButton(onClick = { showExportMenu = true }) {
-                            Icon(
-                                Icons.Default.MoreVert,
-                                contentDescription = stringResource(R.string.home_menu_content_description)
-                            )
-                        }
-                        DropdownMenu(
+                        ChromeIconButton(
+                            onClick = { showExportMenu = true },
+                            icon = Icons.Default.MoreVert,
+                            contentDescription = stringResource(R.string.home_menu_content_description)
+                        )
+                        AppDropdownMenu(
                             expanded = showExportMenu,
                             onDismissRequest = { showExportMenu = false }
                         ) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.home_menu_process_manage)) },
+                            AppDropdownMenuItem(
+                                text = stringResource(R.string.home_menu_process_manage),
                                 onClick = {
                                     showExportMenu = false
                                     navigateToProcessList()
                                 }
                             )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.home_menu_style_manage)) },
+                            AppDropdownMenuItem(
+                                text = stringResource(R.string.home_menu_style_manage),
                                 onClick = {
                                     showExportMenu = false
                                     navigateToStyleManage()
                                 }
                             )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.home_menu_export_all)) },
+                            AppDropdownMenuItem(
+                                text = stringResource(R.string.home_menu_export_all),
                                 onClick = {
                                     showExportMenu = false
                                     exportStartDate = null
@@ -218,8 +227,8 @@ fun HomeScreen(
                                     createExcelLauncher.launch(filename)
                                 }
                             )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.home_menu_export_current_month)) },
+                            AppDropdownMenuItem(
+                                text = stringResource(R.string.home_menu_export_current_month),
                                 onClick = {
                                     showExportMenu = false
                                     val monthCalendar = java.util.Calendar.getInstance()
@@ -229,7 +238,6 @@ fun HomeScreen(
                                     monthCalendar.set(java.util.Calendar.SECOND, 0)
                                     monthCalendar.set(java.util.Calendar.MILLISECOND, 0)
                                     exportStartDate = monthCalendar.timeInMillis
-
                                     monthCalendar.add(java.util.Calendar.MONTH, 1)
                                     monthCalendar.add(java.util.Calendar.MILLISECOND, -1)
                                     exportEndDate = monthCalendar.timeInMillis
@@ -245,8 +253,8 @@ fun HomeScreen(
                                     createExcelLauncher.launch(filename)
                                 }
                             )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.home_menu_backup)) },
+                            AppDropdownMenuItem(
+                                text = stringResource(R.string.home_menu_backup),
                                 onClick = {
                                     showExportMenu = false
                                     navigateToBackup()
@@ -258,61 +266,107 @@ fun HomeScreen(
             )
         },
         floatingActionButton = {
-            // Show FAB only in the records tab.
-            if (selectedTab == 0) {
-                FloatingActionButton(
-                    onClick = navigateToRecordEntry,
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = stringResource(R.string.home_add_record_content_description)
-                    )
-                }
-            }
+            AppFloatingButton(
+                onClick = navigateToRecordAdd,
+                icon = Icons.Default.Add,
+                contentDescription = stringResource(R.string.home_add_record_content_description),
+                modifier = Modifier
+                    .testTag(HOME_ADD_RECORD_BUTTON_TEST_TAG)
+                    .semantics {
+                        contentDescription = context.getString(
+                            R.string.home_add_record_content_description
+                        )
+                    }
+            )
         }
     ) { innerPadding ->
-        Column(modifier = Modifier.padding(innerPadding)) {
-            IncomeSummaryCard(
-                dailyTotal = dailyTotal,
-                monthTotal = monthTotal,
-                isIncomeVisible = isIncomeVisible,
-                onToggleVisible = { isIncomeVisible = !isIncomeVisible },
-                formatCentsToYuan = ::formatCentsToYuan
-            )
+        OverviewHomeContent(
+            dailyTotal = dailyTotal,
+            monthTotal = monthTotal,
+            isIncomeVisible = isIncomeVisible,
+            onToggleVisible = { isIncomeVisible = !isIncomeVisible },
+            formatCentsToYuan = ::formatCentsToYuan,
+            selectedOverviewTab = selectedOverviewTab,
+            onOverviewTabSelected = { selectedOverviewTab = it },
+            selectedDate = selectedDate,
+            onPreviousDayClick = { listViewModel.decrementDate() },
+            onNextDayClick = { listViewModel.incrementDate() },
+            onDateClick = { showCalendarDialog = true },
+            onBackToTodayClick = { listViewModel.updateSelectedDate(System.currentTimeMillis()) },
+            workRecordListUiState = workRecordListUiState,
+            onRecordClick = navigateToRecordEdit,
+            onRecordCopy = navigateToRecordCopy,
+            styleStats = styleStats,
+            monthRecords = monthRecords,
+            currentMonthColorItems = currentMonthColorItems,
+            modifier = Modifier.padding(innerPadding)
+        )
+    }
+}
 
-            HomeRecordStatsTabRow(
-                selectedTab = selectedTab,
-                onTabSelected = { selectedTab = it }
-            )
+@Composable
+private fun OverviewHomeContent(
+    dailyTotal: Long,
+    monthTotal: Long,
+    isIncomeVisible: Boolean,
+    onToggleVisible: () -> Unit,
+    formatCentsToYuan: (Long) -> String,
+    selectedOverviewTab: Int,
+    onOverviewTabSelected: (Int) -> Unit,
+    selectedDate: Long,
+    onPreviousDayClick: () -> Unit,
+    onNextDayClick: () -> Unit,
+    onDateClick: () -> Unit,
+    onBackToTodayClick: () -> Unit,
+    workRecordListUiState: com.example.processrecord.ui.viewmodel.WorkRecordListUiState,
+    onRecordClick: (Long) -> Unit,
+    onRecordCopy: (Long) -> Unit,
+    styleStats: List<com.example.processrecord.data.dao.StyleStat>,
+    monthRecords: List<WorkRecord>,
+    currentMonthColorItems: Map<Long, List<WorkRecordColorItem>>,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier) {
+        IncomeSummaryCard(
+            dailyTotal = dailyTotal,
+            monthTotal = monthTotal,
+            isIncomeVisible = isIncomeVisible,
+            onToggleVisible = onToggleVisible,
+            formatCentsToYuan = formatCentsToYuan
+        )
 
-            if (selectedTab == 0) {
-                DailyRecordDateSelector(
-                    selectedDate = selectedDate,
-                    onPreviousDayClick = { listViewModel.decrementDate() },
-                    onNextDayClick = { listViewModel.incrementDate() },
-                    onDateClick = { showCalendarDialog = true },
-                    onBackToTodayClick = { listViewModel.updateSelectedDate(System.currentTimeMillis()) }
-                )
-                WorkRecordListBody(
-                    workRecordList = workRecordListUiState.workRecordList,
-                    colorItemsMap = workRecordListUiState.colorItemsMap,
-                    onRecordClick = navigateToRecordEdit,
-                    onRecordCopy = navigateToRecordCopy,
-                    onSwipeLeft = { listViewModel.incrementDate() },
-                    onSwipeRight = { listViewModel.decrementDate() },
-                    modifier = Modifier.weight(1f)
-                )
-            } else {
-                StyleStatsBody(
-                    styleStats = styleStats,
-                    workRecordList = monthRecords,
-                    colorItemsMap = statsViewModel.currentMonthColorItemsMap.collectAsState().value,
-                    onRecordClick = navigateToRecordEdit,
-                    modifier = Modifier.weight(1f)
-                )
-            }
+        HomeRecordStatsTabRow(
+            selectedTab = selectedOverviewTab,
+            onTabSelected = onOverviewTabSelected
+        )
+
+        if (selectedOverviewTab == 0) {
+            DailyRecordDateSelector(
+                selectedDate = selectedDate,
+                onPreviousDayClick = onPreviousDayClick,
+                onNextDayClick = onNextDayClick,
+                onDateClick = onDateClick,
+                onBackToTodayClick = onBackToTodayClick
+            )
+            WorkRecordListBody(
+                workRecordList = workRecordListUiState.workRecordList,
+                colorItemsMap = workRecordListUiState.colorItemsMap,
+                onRecordClick = onRecordClick,
+                onRecordCopy = onRecordCopy,
+                onSwipeLeft = onNextDayClick,
+                onSwipeRight = onPreviousDayClick,
+                displayMode = WorkRecordItemDisplayMode.LargeDaily,
+                modifier = Modifier.weight(1f)
+            )
+        } else {
+            StyleStatsBody(
+                styleStats = styleStats,
+                workRecordList = monthRecords,
+                colorItemsMap = currentMonthColorItems,
+                onRecordClick = onRecordClick,
+                bottomContentPadding = HomeFabContentBottomPadding,
+                modifier = Modifier.weight(1f)
+            )
         }
     }
 }
@@ -325,11 +379,12 @@ fun WorkRecordListBody(
     onRecordCopy: (Long) -> Unit,
     onSwipeLeft: (() -> Unit)? = null,
     onSwipeRight: (() -> Unit)? = null,
+    displayMode: WorkRecordItemDisplayMode = WorkRecordItemDisplayMode.Standard,
     modifier: Modifier = Modifier
 ) {
-    // Accumulate horizontal drag distance and switch day when threshold is reached.
     var dragAccum by remember { mutableStateOf(0f) }
     val swipeThreshold = 80f
+    val isLargeDaily = displayMode == WorkRecordItemDisplayMode.LargeDaily
 
     val swipeModifier = Modifier.pointerInput(Unit) {
         detectHorizontalDragGestures(
@@ -353,43 +408,38 @@ fun WorkRecordListBody(
             modifier = modifier.fillMaxSize().then(swipeModifier),
             contentAlignment = Alignment.Center
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.List,
-                    contentDescription = null,
-                    modifier = Modifier.size(64.dp),
-                    tint = MaterialTheme.colorScheme.surfaceVariant
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = stringResource(R.string.home_empty_records),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            EmptyStateCard(
+                title = stringResource(R.string.home_empty_records),
+                subtitle = stringResource(R.string.home_empty_records_hint),
+                icon = Icons.AutoMirrored.Filled.List,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+            )
         }
     } else {
         LazyColumn(
             modifier = modifier.fillMaxSize().then(swipeModifier),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                start = 12.dp, end = 12.dp, top = 8.dp, bottom = 88.dp
-            ),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            contentPadding = if (isLargeDaily) {
+                PaddingValues(start = 10.dp, end = 10.dp, top = 4.dp, bottom = 92.dp)
+            } else {
+                PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 100.dp)
+            },
+            verticalArrangement = Arrangement.spacedBy(if (isLargeDaily) 8.dp else 10.dp)
         ) {
             items(items = workRecordList, key = { it.id }) { record ->
                 WorkRecordItem(
                     record = record,
                     colorItems = colorItemsMap[record.id] ?: emptyList(),
                     onCopy = { onRecordCopy(record.id) },
-                    onClick = { onRecordClick(record.id) }
+                    onClick = { onRecordClick(record.id) },
+                    displayMode = displayMode
                 )
             }
         }
     }
 }
 
-
-// Calendar dialog host for HomeScreen.
 @Composable
 private fun CalendarDialogHost(
     showCalendarDialog: Boolean,
@@ -413,4 +463,3 @@ private fun CalendarDialogHost(
         )
     }
 }
-
