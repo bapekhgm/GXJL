@@ -66,6 +66,29 @@ class ProcessEntryViewModelTest {
     }
 
     @Test
+    fun saveProcess_insertsProcess_withFallbacks_whenPriceAndUnitBlank() = runBlocking {
+        val fakeRepository = FakeProcessRepositoryForProcessEntryTest()
+        val viewModel = ProcessEntryViewModel(
+            savedStateHandle = SavedStateHandle(),
+            processRepository = fakeRepository
+        )
+        viewModel.updateUiState(
+            ProcessDetails(
+                name = "Pack",
+                defaultPrice = "",
+                unit = ""
+            )
+        )
+
+        val result = viewModel.saveProcess()
+
+        assertTrue(result.isSuccess)
+        assertEquals(1, fakeRepository.insertCalls)
+        assertEquals(0.0, fakeRepository.lastInsertedProcess?.defaultPrice ?: -1.0, 0.0)
+        assertEquals(DEFAULT_PROCESS_UNIT, fakeRepository.lastInsertedProcess?.unit)
+    }
+
+    @Test
     fun saveProcess_returnsFailure_whenPriceIsInvalid() = runBlocking {
         val fakeRepository = FakeProcessRepositoryForProcessEntryTest()
         val viewModel = ProcessEntryViewModel(

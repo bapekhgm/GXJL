@@ -31,6 +31,123 @@ class WorkRecordEntryViewModelTest {
     val mainDispatcherRule = MainDispatcherRule()
 
     @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun init_keepsNewEntryBlank_evenWhenLatestRecordExists() = runTest {
+        val latestRecord = WorkRecord(
+            id = 8L,
+            processId = 5L,
+            processName = "pack",
+            style = "S-88",
+            unitPrice = 250L,
+            quantity = 6L,
+            amount = 1500L,
+            remark = "done",
+            date = 1_700_000_000_000L,
+            createTime = 1_700_000_100_000L
+        )
+        val viewModel = WorkRecordEntryViewModel(
+            savedStateHandle = SavedStateHandle(),
+            workRecordRepository = FakeWorkRecordRepository().apply {
+                records += latestRecord
+            },
+            processRepository = FakeProcessRepository(),
+            styleRepository = StyleRepository(FakeStyleDao())
+        )
+
+        advanceUntilIdle()
+
+        val details = viewModel.workRecordUiState.workRecordDetails
+        assertEquals("", details.style)
+        assertEquals("", details.processName)
+        assertEquals("", details.unitPrice)
+        assertEquals("", details.quantity)
+        assertEquals("0.00", details.amount)
+        assertTrue(details.date > 0L)
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun init_withCopyFromId_keepsCopiedColorEntriesAndQuantities() = runTest {
+        val sourceRecord = WorkRecord(
+            id = 8L,
+            processId = 5L,
+            processName = "pack",
+            style = "S-88",
+            unitPrice = 250L,
+            quantity = 7L,
+            amount = 1750L,
+            remark = "done",
+            totalQuantity = 9L,
+            serialNumber = "SN-1",
+            color = "红2 蓝5",
+            date = 1_700_000_000_000L,
+            startTime = 1_700_000_100_000L,
+            endTime = 1_700_000_200_000L,
+            createTime = 1_700_000_300_000L
+        )
+        val fakeRepository = FakeWorkRecordRepository().apply {
+            records += sourceRecord
+            seedColorItems(
+                recordId = sourceRecord.id,
+                items = listOf(
+                    WorkRecordColorItem(
+                        id = 1L,
+                        workRecordId = sourceRecord.id,
+                        colorName = "红",
+                        colorHex = "#FF0000",
+                        quantity = 2L,
+                        deficit = 1L,
+                        colorCode = "R1",
+                        sortOrder = 0
+                    ),
+                    WorkRecordColorItem(
+                        id = 2L,
+                        workRecordId = sourceRecord.id,
+                        colorName = "蓝",
+                        colorHex = "#0000FF",
+                        quantity = 5L,
+                        deficit = 0L,
+                        colorCode = "B5",
+                        sortOrder = 1
+                    )
+                )
+            )
+        }
+        val viewModel = WorkRecordEntryViewModel(
+            savedStateHandle = SavedStateHandle(mapOf("copyFromId" to sourceRecord.id.toString())),
+            workRecordRepository = fakeRepository,
+            processRepository = FakeProcessRepository(),
+            styleRepository = StyleRepository(FakeStyleDao())
+        )
+
+        advanceUntilIdle()
+
+        val details = viewModel.workRecordUiState.workRecordDetails
+        assertEquals(0L, details.id)
+        assertEquals("pack", details.processName)
+        assertEquals("S-88", details.style)
+        assertEquals("2.50", details.unitPrice)
+        assertEquals("7", details.quantity)
+        assertEquals("17.50", details.amount)
+        assertEquals("", details.remark)
+        assertEquals("", details.totalQuantity)
+        assertEquals("", details.serialNumber)
+        assertEquals(0L, details.startTime)
+        assertEquals(0L, details.endTime)
+        assertTrue(details.imagePaths.isEmpty())
+        assertEquals("红2 蓝5", details.color)
+        assertEquals(2, details.colorEntries.size)
+        assertEquals("红", details.colorEntries[0].colorName)
+        assertEquals("2", details.colorEntries[0].quantity)
+        assertEquals("1", details.colorEntries[0].deficit)
+        assertEquals("R1", details.colorEntries[0].colorCode)
+        assertEquals("蓝", details.colorEntries[1].colorName)
+        assertEquals("5", details.colorEntries[1].quantity)
+        assertEquals("B5", details.colorEntries[1].colorCode)
+        assertTrue(details.date > sourceRecord.date)
+    }
+
+    @Test
     fun onColorEntriesChanged_withQuantities_updatesSummaryAndQuantity() {
         val viewModel = createViewModel()
         viewModel.updateUiState(
@@ -133,6 +250,14 @@ class WorkRecordEntryViewModelTest {
 
         assertEquals(listOf("img-1.jpg", "img-2.jpg"), fakeWorkRecordRepository.lastInsertedImages)
         assertEquals(listOf("style-A"), fakeStyleDao.insertedStyles.map { it.name })
+
+        val details = viewModel.workRecordUiState.workRecordDetails
+        assertEquals("", details.style)
+        assertEquals("", details.processName)
+        assertEquals("", details.unitPrice)
+        assertEquals("", details.quantity)
+        assertEquals("0.00", details.amount)
+        assertEquals(1_700_000_000_000L, details.date)
     }
 
     @Test
@@ -611,6 +736,7 @@ private class FakeWorkRecordRepository : WorkRecordRepository {
     var lastInsertedRecord: WorkRecord? = null
     var lastInsertedImages: List<String> = emptyList()
     var lastInsertedColorItems: List<WorkRecordColorItem>? = null
+    private val colorItemsByRecordId = mutableMapOf<Long, List<WorkRecordColorItem>>()
 
     private val colorPresetsFlow = MutableStateFlow(emptyList<ColorPreset>())
     private val colorGroupsFlow = MutableStateFlow(emptyList<ColorGroup>())
@@ -640,6 +766,9 @@ private class FakeWorkRecordRepository : WorkRecordRepository {
     override fun getRecordDatesInMonthStream(monthStart: Long, monthEnd: Long): Flow<List<Long>> = flowOf(emptyList())
 
     override suspend fun getRecordStream(id: Long): WorkRecord? = records.firstOrNull { it.id == id }
+
+    override suspend fun getLatestRecord(): WorkRecord? =
+        records.maxWithOrNull(compareBy<WorkRecord> { it.createTime }.thenBy { it.id })
 
     override suspend fun insertRecordWithDetails(
         record: WorkRecord,
@@ -674,7 +803,8 @@ private class FakeWorkRecordRepository : WorkRecordRepository {
 
     override suspend fun getImagesByRecordIds(recordIds: List<Long>): Map<Long, List<String>> = emptyMap()
 
-    override suspend fun getColorItemsForRecord(recordId: Long): List<WorkRecordColorItem> = emptyList()
+    override suspend fun getColorItemsForRecord(recordId: Long): List<WorkRecordColorItem> =
+        colorItemsByRecordId[recordId].orEmpty()
 
     override fun getColorPresetsStream(): Flow<List<ColorPreset>> = colorPresetsFlow
 
@@ -724,5 +854,9 @@ private class FakeWorkRecordRepository : WorkRecordRepository {
 
     fun seedColorGroups(groups: List<ColorGroup>) {
         colorGroupsFlow.value = groups
+    }
+
+    fun seedColorItems(recordId: Long, items: List<WorkRecordColorItem>) {
+        colorItemsByRecordId[recordId] = items
     }
 }

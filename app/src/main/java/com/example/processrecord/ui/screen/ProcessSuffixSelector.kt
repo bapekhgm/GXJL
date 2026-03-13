@@ -1,12 +1,12 @@
 package com.example.processrecord.ui.screen
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -19,6 +19,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.example.processrecord.R
+import com.example.processrecord.ui.component.EnhancedTextField
 
 private val PROCESS_SUFFIX_REGEX = Regex("""\*(\d+)$""")
 private val PROCESS_QUICK_SUFFIXES = listOf(1, 2, 3, 4)
@@ -32,7 +33,11 @@ internal fun clearProcessSuffix(name: String): String =
     name.replace(PROCESS_SUFFIX_REGEX, "").trimEnd()
 
 @Composable
-fun ProcessSuffixSelector(name: String, onNameChange: (String) -> Unit) {
+fun ProcessSuffixSelector(
+    name: String,
+    onNameChange: (String) -> Unit,
+    compact: Boolean = false
+) {
     val matchResult = PROCESS_SUFFIX_REGEX.find(name)
     val currentNum = matchResult?.groupValues?.getOrNull(1)?.toIntOrNull()
     var customInput by remember(name) {
@@ -45,46 +50,87 @@ fun ProcessSuffixSelector(name: String, onNameChange: (String) -> Unit) {
         )
     }
 
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        PROCESS_QUICK_SUFFIXES.forEach { num ->
-            FilterChip(
-                selected = currentNum == num,
-                onClick = {
-                    val newName = if (currentNum == num) {
-                        clearProcessSuffix(name)
-                    } else {
-                        applyProcessSuffix(name, "*$num")
+    val chipRow: @Composable () -> Unit = {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            PROCESS_QUICK_SUFFIXES.forEach { num ->
+                FilterChip(
+                    selected = currentNum == num,
+                    onClick = {
+                        val newName = if (currentNum == num) {
+                            clearProcessSuffix(name)
+                        } else {
+                            applyProcessSuffix(name, "*$num")
+                        }
+                        customInput = ""
+                        onNameChange(newName)
+                    },
+                    label = { Text("*$num") }
+                )
+            }
+        }
+    }
+
+    val customEditor: @Composable () -> Unit = {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                text = "*",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            EnhancedTextField(
+                value = customInput,
+                onValueChange = { value ->
+                    val digits = value.filter { it.isDigit() }.take(4)
+                    customInput = digits
+                    if (digits.isNotEmpty()) {
+                        onNameChange(applyProcessSuffix(name, "*$digits"))
+                    } else if (currentNum != null && currentNum !in PROCESS_QUICK_SUFFIXES) {
+                        onNameChange(clearProcessSuffix(name))
                     }
-                    customInput = ""
-                    onNameChange(newName)
                 },
-                label = { Text("*$num") }
+                placeholder = {
+                    Text(stringResource(R.string.process_suffix_custom_placeholder))
+                },
+                label = null,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
+                modifier = Modifier.width(if (compact) 72.dp else 64.dp)
             )
         }
+    }
 
-        Text(
-            text = "*",
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        OutlinedTextField(
-            value = customInput,
-            onValueChange = { value ->
-                val digits = value.filter { it.isDigit() }.take(4)
-                customInput = digits
-                if (digits.isNotEmpty()) {
-                    onNameChange(applyProcessSuffix(name, "*$digits"))
-                } else if (currentNum != null && currentNum !in PROCESS_QUICK_SUFFIXES) {
-                    onNameChange(clearProcessSuffix(name))
-                }
-            },
-            placeholder = { Text(stringResource(R.string.process_suffix_custom_placeholder)) },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            singleLine = true,
-            modifier = Modifier.width(64.dp)
-        )
+    if (compact) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            chipRow()
+            customEditor()
+        }
+    } else {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            PROCESS_QUICK_SUFFIXES.forEach { num ->
+                FilterChip(
+                    selected = currentNum == num,
+                    onClick = {
+                        val newName = if (currentNum == num) {
+                            clearProcessSuffix(name)
+                        } else {
+                            applyProcessSuffix(name, "*$num")
+                        }
+                        customInput = ""
+                        onNameChange(newName)
+                    },
+                    label = { Text("*$num") }
+                )
+            }
+            customEditor()
+        }
     }
 }

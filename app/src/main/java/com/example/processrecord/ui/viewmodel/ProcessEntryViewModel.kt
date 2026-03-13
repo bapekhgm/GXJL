@@ -44,13 +44,13 @@ class ProcessEntryViewModel(
 
     private fun validateInput(uiState: ProcessDetails = processUiState.processDetails): Boolean {
         return with(uiState) {
-            name.isNotBlank() && isValidPrice(defaultPrice) && unit.isNotBlank()
+            name.isNotBlank() && isValidPrice(defaultPrice)
         }
     }
 
     private fun isValidPrice(input: String): Boolean {
         val normalized = normalizeDecimalInput(input)
-        if (normalized.isEmpty()) return false
+        if (normalized.isEmpty()) return true
         val parsed = normalized.toDoubleOrNull() ?: return false
         return parsed.isFinite() && parsed >= 0.0
     }
@@ -62,7 +62,7 @@ class ProcessEntryViewModel(
         return runCatching {
             val normalized = processUiState.processDetails.copy(
                 name = processUiState.processDetails.name.trim(),
-                unit = processUiState.processDetails.unit.trim()
+                unit = normalizeProcessUnit(processUiState.processDetails.unit)
             )
             val existing = processRepository.getProcessByName(normalized.name)
             if (processId != null) {
@@ -112,6 +112,6 @@ data class ProcessDetails(
     val id: Long = 0,
     val name: String = "",
     val defaultPrice: String = "",
-    val unit: String = "件",
+    val unit: String = "",
     val isActive: Boolean = true
 )

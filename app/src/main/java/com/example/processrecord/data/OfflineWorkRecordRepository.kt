@@ -88,6 +88,8 @@ class OfflineWorkRecordRepository(
 
     override suspend fun getRecordStream(id: Long): WorkRecord? = workRecordDao.getRecordById(id)
 
+    override suspend fun getLatestRecord(): WorkRecord? = workRecordDao.getLatestRecord()
+
     // Atomic insert: write record + images + color items in one transaction.
     override suspend fun insertRecordWithDetails(
         record: WorkRecord,

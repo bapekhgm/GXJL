@@ -115,5 +115,17 @@ class ViewModelExtensionsTest {
         val commaMapped = commaPriceDetails.toProcess()
         assertEquals(8L, commaMapped.id)
         assertEquals(2.5, commaMapped.defaultPrice, 0.0)
+
+        val blankUnitDetails = ProcessDetails(
+            id = 9L,
+            name = "pressing",
+            defaultPrice = "",
+            unit = "   ",
+            isActive = true
+        )
+        val blankUnitMapped = blankUnitDetails.toProcess()
+        assertEquals(9L, blankUnitMapped.id)
+        assertEquals(0.0, blankUnitMapped.defaultPrice, 0.0)
+        assertEquals(DEFAULT_PROCESS_UNIT, blankUnitMapped.unit)
     }
 }

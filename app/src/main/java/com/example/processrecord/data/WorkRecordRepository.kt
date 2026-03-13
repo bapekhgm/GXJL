@@ -20,6 +20,7 @@ interface WorkRecordRepository {
     fun getRecordDatesInMonthStream(monthStart: Long, monthEnd: Long): Flow<List<Long>>
 
     suspend fun getRecordStream(id: Long): WorkRecord?
+    suspend fun getLatestRecord(): WorkRecord?
 
     // Atomic write: record + images + color items in one transaction.
     suspend fun insertRecordWithDetails(

@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.processrecord.R
@@ -25,6 +26,11 @@ fun ColorPresetManageScreen(
     val context = LocalContext.current
     val presets by viewModel.colorPresets.collectAsState()
     val groups by viewModel.colorGroups.collectAsState()
+    val presetsByGroupId = remember(presets) {
+        presets
+            .groupBy { it.groupId }
+            .mapValues { (_, items) -> items.sortedBy { it.sortOrder } }
+    }
     val colorManageOperationError = viewModel.colorManageOperationError
     val colorManageOperationNotice = viewModel.colorManageOperationNotice
     val createState = rememberColorPresetCreateState()
@@ -94,7 +100,7 @@ fun ColorPresetManageScreen(
     ColorPresetManageLayout(navigateBack = navigateBack) {
         ColorPresetManageContent(
             groups = groups,
-            presets = presets,
+            presetsByGroupId = presetsByGroupId,
             createState = createState,
             createColorPicker = createColorPicker,
             editState = editState,

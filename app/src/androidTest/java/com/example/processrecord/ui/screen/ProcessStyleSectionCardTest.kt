@@ -26,12 +26,6 @@ class ProcessStyleSectionCardTest {
 
     @Test
     fun processSelectorOverlayClick_opensAddProcessMenu() {
-        val context = composeRule.activity
-
-        composeRule.onNodeWithContentDescription(
-            context.getString(R.string.home_add_record_content_description)
-        ).performClick()
-
         composeRule.onNodeWithTag(PROCESS_SELECTOR_OVERLAY_TEST_TAG)
             .assertIsDisplayed()
             .performClick()
@@ -48,10 +42,6 @@ class ProcessStyleSectionCardTest {
     fun addProcessDialog_duplicateName_disablesConfirmButton() {
         val context = composeRule.activity
         val processName = "UiTestProc${System.currentTimeMillis()}"
-
-        composeRule.onNodeWithContentDescription(
-            context.getString(R.string.home_add_record_content_description)
-        ).performClick()
 
         openAddProcessDialogFromSelector()
         composeRule.onNodeWithTag(PROCESS_DIALOG_NAME_INPUT_TEST_TAG).performTextInput(processName)

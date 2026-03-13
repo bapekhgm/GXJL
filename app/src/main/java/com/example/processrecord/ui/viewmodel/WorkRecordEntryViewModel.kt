@@ -15,6 +15,8 @@ import com.example.processrecord.data.entity.ColorGroup
 import com.example.processrecord.data.entity.ColorPreset
 import com.example.processrecord.data.entity.Process
 import com.example.processrecord.data.entity.Style
+import com.example.processrecord.data.entity.WorkRecord
+import com.example.processrecord.data.entity.WorkRecordColorItem
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -38,6 +40,65 @@ sealed interface ColorManageOperationNotice {
     data class GroupUpdated(val name: String) : ColorManageOperationNotice
     data class GroupDeleted(val name: String) : ColorManageOperationNotice
 }
+
+enum class WorkRecordFieldError {
+    Required,
+    InvalidNumber,
+    MustBePositive,
+    MustBeNonNegative
+}
+
+data class WorkRecordValidationErrors(
+    val style: WorkRecordFieldError? = null,
+    val processName: WorkRecordFieldError? = null,
+    val quantity: WorkRecordFieldError? = null,
+    val unitPrice: WorkRecordFieldError? = null
+)
+
+data class WorkRecordLastUsedDefaults(
+    val processId: Long? = null,
+    val processName: String = "",
+    val style: String = "",
+    val unitPrice: String = ""
+) {
+    val hasContent: Boolean
+        get() = processName.isNotBlank() || style.isNotBlank() || unitPrice.isNotBlank()
+}
+
+data class WorkRecordUiState(
+    val workRecordDetails: WorkRecordDetails = WorkRecordDetails(),
+    val isEntryValid: Boolean = false,
+    val validationErrors: WorkRecordValidationErrors = WorkRecordValidationErrors(),
+    val hasRequestedValidation: Boolean = false,
+    val lastUsedDefaults: WorkRecordLastUsedDefaults? = null
+)
+
+data class WorkRecordDetails(
+    val id: Long = 0,
+    val processId: Long? = null,
+    val processName: String = "",
+    val style: String = "",
+    val unitPrice: String = "",
+    val quantity: String = "",
+    val amount: String = "0.00",
+    val startTime: Long = 0,
+    val endTime: Long = 0,
+    val remark: String = "",
+    val totalQuantity: String = "",
+    val serialNumber: String = "",
+    val color: String = "",
+    val colorEntries: List<ColorEntryUi> = emptyList(),
+    val imagePaths: List<String> = emptyList(),
+    val date: Long = System.currentTimeMillis()
+)
+
+data class ColorEntryUi(
+    val colorName: String,
+    val colorHex: String,
+    val quantity: String,
+    val deficit: String = "",
+    val colorCode: String = ""
+)
 
 class WorkRecordEntryViewModel(
     savedStateHandle: SavedStateHandle,
@@ -127,11 +188,14 @@ class WorkRecordEntryViewModel(
         val details = if (asCopy) {
             record.toWorkRecordDetails().copy(
                 id = 0,
+                remark = "",
+                totalQuantity = "",
+                serialNumber = "",
+                colorEntries = colorEntries,
                 date = System.currentTimeMillis(),
                 startTime = 0,
                 endTime = 0,
-                imagePaths = images,
-                colorEntries = colorEntries
+                imagePaths = emptyList()
             )
         } else {
             record.toWorkRecordDetails().copy(
@@ -139,24 +203,22 @@ class WorkRecordEntryViewModel(
                 colorEntries = colorEntries
             )
         }
-        workRecordUiState = WorkRecordUiState(workRecordDetails = details, isEntryValid = true)
+
+        setWorkRecordUiState(
+            recordDetails = details,
+            lastUsedDefaults = details.toLastUsedDefaults(),
+            hasRequestedValidation = false
+        )
+
         if (colorEntries.isNotEmpty()) {
             onColorEntriesChanged(colorEntries)
         }
     }
 
     fun updateUiState(recordDetails: WorkRecordDetails) {
-        val quantity = recordDetails.quantity.toLongOrNull() ?: 0L
-        val unitPriceCents = yuanToCents(recordDetails.unitPrice)
-        val amountCents = quantity * unitPriceCents
-        val amountYuan = amountCents / 100.0
-        
-        workRecordUiState = WorkRecordUiState(
-            workRecordDetails = recordDetails.copy(amount = String.format(Locale.getDefault(), "%.2f", amountYuan)),
-            isEntryValid = validateInput(recordDetails)
-        )
+        setWorkRecordUiState(recordDetails = recordDetails)
     }
-    
+
     fun onProcessSelected(process: Process) {
         val currentDetails = workRecordUiState.workRecordDetails
         val newDetails = currentDetails.copy(
@@ -186,7 +248,9 @@ class WorkRecordEntryViewModel(
     fun addColorEntryFromPreset(colorName: String, colorHex: String) {
         val existing = workRecordUiState.workRecordDetails.colorEntries
         if (existing.any { it.colorName == colorName }) return
-        onColorEntriesChanged(existing + ColorEntryUi(colorName = colorName, colorHex = colorHex, quantity = ""))
+        onColorEntriesChanged(
+            existing + ColorEntryUi(colorName = colorName, colorHex = colorHex, quantity = "")
+        )
     }
 
     fun updateColorEntryQuantity(colorName: String, quantity: String) {
@@ -211,7 +275,9 @@ class WorkRecordEntryViewModel(
     }
 
     fun removeColorEntry(colorName: String) {
-        val updated = workRecordUiState.workRecordDetails.colorEntries.filterNot { it.colorName == colorName }
+        val updated = workRecordUiState.workRecordDetails.colorEntries.filterNot {
+            it.colorName == colorName
+        }
         onColorEntriesChanged(updated)
     }
 
@@ -346,7 +412,9 @@ class WorkRecordEntryViewModel(
     }
 
     fun onColorEntriesChanged(entries: List<ColorEntryUi>) {
-        val hasAnyQuantity = entries.any { it.quantity.toLongOrNull() != null && it.quantity.isNotBlank() }
+        val hasAnyQuantity = entries.any {
+            it.quantity.toLongOrNull() != null && it.quantity.isNotBlank()
+        }
         val colorSummary = buildColorSummary(entries)
         val newDetails = if (hasAnyQuantity) {
             val totalQuantity = entries.sumOf { it.quantity.toLongOrNull() ?: 0L }
@@ -423,7 +491,6 @@ class WorkRecordEntryViewModel(
             }
         }
     }
-    
 
     fun updateProcess(process: Process) {
         val trimmedName = process.name.trim()
@@ -446,10 +513,12 @@ class WorkRecordEntryViewModel(
                 )
                 processRepository.updateProcess(normalized)
                 if (workRecordUiState.workRecordDetails.processId == normalized.id) {
-                    updateUiState(workRecordUiState.workRecordDetails.copy(
-                        processName = normalized.name,
-                        unitPrice = normalized.defaultPrice.toString()
-                    ))
+                    updateUiState(
+                        workRecordUiState.workRecordDetails.copy(
+                            processName = normalized.name,
+                            unitPrice = normalized.defaultPrice.toString()
+                        )
+                    )
                 }
             }.onFailure {
                 processOperationError = it
@@ -462,11 +531,13 @@ class WorkRecordEntryViewModel(
             runCatching {
                 processRepository.deleteProcess(process)
                 if (workRecordUiState.workRecordDetails.processId == process.id) {
-                    updateUiState(workRecordUiState.workRecordDetails.copy(
-                        processId = null,
-                        processName = "",
-                        unitPrice = ""
-                    ))
+                    updateUiState(
+                        workRecordUiState.workRecordDetails.copy(
+                            processId = null,
+                            processName = "",
+                            unitPrice = ""
+                        )
+                    )
                 }
             }.onFailure {
                 processOperationError = it
@@ -486,55 +557,46 @@ class WorkRecordEntryViewModel(
         }
     }
 
-    private fun validateInput(uiState: WorkRecordDetails = workRecordUiState.workRecordDetails): Boolean {
-        return with(uiState) {
-            val quantityValue = quantity.toLongOrNull()
-            val unitPriceValue = normalizeDecimalInput(unitPrice).toDoubleOrNull()
-            style.isNotBlank() && 
-            processName.isNotBlank() && 
-            quantityValue != null &&
-            quantityValue > 0L &&
-            unitPriceValue != null &&
-            unitPriceValue >= 0.0 &&
-            date > 0
-        }
-    }
-
-    private fun isValidProcessInput(name: String, defaultPrice: Double, unit: String): Boolean {
-        return name.isNotBlank() &&
-            unit.isNotBlank() &&
-            defaultPrice.isFinite() &&
-            defaultPrice >= 0.0
-    }
-
-    private fun asColorOperationError(error: Throwable): Throwable {
-        return when (error) {
-            is ColorPresetNameConflictException ->
-                ColorPresetAlreadyExistsException(error.presetName)
-            is ColorGroupNameConflictException ->
-                ColorGroupAlreadyExistsException(error.groupName)
-            is InvalidColorPresetInputException,
-            is ColorPresetAlreadyExistsException,
-            is InvalidColorGroupInputException,
-            is ColorGroupAlreadyExistsException,
-            is ColorOperationFailedException -> error
-            else -> ColorOperationFailedException()
-        }
-    }
-
     suspend fun saveWorkRecord(): Result<Unit> {
-        if (!validateInput()) {
+        val currentDetails = workRecordUiState.workRecordDetails
+        return persistRecord(currentDetails) { savedDefaults ->
+            setWorkRecordUiState(
+                recordDetails = emptyNewEntryDetails(date = currentDetails.date),
+                lastUsedDefaults = savedDefaults,
+                hasRequestedValidation = false
+            )
+        }
+    }
+
+    suspend fun deleteRecord(): Result<Unit> {
+        val targetRecordId = recordId ?: return Result.failure(WorkRecordNotFoundException())
+        return runCatching {
+            workRecordRepository.deleteRecord(
+                workRecordUiState.workRecordDetails.toWorkRecord().copy(id = targetRecordId)
+            )
+        }
+    }
+
+    private suspend fun persistRecord(
+        currentDetails: WorkRecordDetails,
+        onSuccess: (WorkRecordLastUsedDefaults) -> Unit
+    ): Result<Unit> {
+        setWorkRecordUiState(
+            recordDetails = currentDetails,
+            hasRequestedValidation = true
+        )
+        if (!validateInput(currentDetails)) {
             return Result.failure(InvalidWorkRecordInputException())
         }
+
         return runCatching {
-            val normalizedStyle = workRecordUiState.workRecordDetails.style.trim()
-            val record = workRecordUiState.workRecordDetails
-                .copy(style = normalizedStyle)
-                .toWorkRecord()
-            val images = workRecordUiState.workRecordDetails.imagePaths
-            val colorItems = workRecordUiState.workRecordDetails.colorEntries.mapIndexed { index, entry ->
-                com.example.processrecord.data.entity.WorkRecordColorItem(
-                    workRecordId = 0, // Filled with actual id inside transaction
+            val normalizedStyle = currentDetails.style.trim()
+            val normalizedDetails = currentDetails.copy(style = normalizedStyle)
+            val record = normalizedDetails.toWorkRecord()
+            val images = normalizedDetails.imagePaths
+            val colorItems = normalizedDetails.colorEntries.mapIndexed { index, entry ->
+                WorkRecordColorItem(
+                    workRecordId = 0,
                     colorName = entry.colorName,
                     colorHex = normalizeHex(entry.colorHex),
                     quantity = entry.quantity.toLongOrNull() ?: 0L,
@@ -564,50 +626,119 @@ class WorkRecordEntryViewModel(
                     colorItems = colorItems
                 )
             }
+
+            normalizedDetails.toLastUsedDefaults()
+        }.map { savedDefaults ->
+            onSuccess(savedDefaults)
         }
     }
 
-    suspend fun deleteRecord(): Result<Unit> {
-        val targetRecordId = recordId ?: return Result.failure(WorkRecordNotFoundException())
-        return runCatching {
-            workRecordRepository.deleteRecord(
-                workRecordUiState.workRecordDetails.toWorkRecord().copy(id = targetRecordId)
-            )
+    private fun setWorkRecordUiState(
+        recordDetails: WorkRecordDetails,
+        lastUsedDefaults: WorkRecordLastUsedDefaults? = workRecordUiState.lastUsedDefaults,
+        hasRequestedValidation: Boolean = workRecordUiState.hasRequestedValidation
+    ) {
+        val quantity = recordDetails.quantity.toLongOrNull() ?: 0L
+        val unitPriceCents = yuanToCents(recordDetails.unitPrice)
+        val amountCents = quantity * unitPriceCents
+        val amountYuan = amountCents / 100.0
+        val normalizedDetails = recordDetails.copy(
+            amount = String.format(Locale.getDefault(), "%.2f", amountYuan)
+        )
+
+        workRecordUiState = WorkRecordUiState(
+            workRecordDetails = normalizedDetails,
+            isEntryValid = validateInput(normalizedDetails),
+            validationErrors = if (hasRequestedValidation) {
+                buildValidationErrors(normalizedDetails)
+            } else {
+                WorkRecordValidationErrors()
+            },
+            hasRequestedValidation = hasRequestedValidation,
+            lastUsedDefaults = lastUsedDefaults
+        )
+    }
+
+    private fun validateInput(uiState: WorkRecordDetails = workRecordUiState.workRecordDetails): Boolean {
+        return with(uiState) {
+            val quantityValue = quantity.toLongOrNull()
+            val unitPriceValue = normalizeDecimalInput(unitPrice).toDoubleOrNull()
+            style.isNotBlank() &&
+                processName.isNotBlank() &&
+                quantityValue != null &&
+                quantityValue > 0L &&
+                unitPriceValue != null &&
+                unitPriceValue >= 0.0 &&
+                date > 0
+        }
+    }
+
+    private fun buildValidationErrors(uiState: WorkRecordDetails): WorkRecordValidationErrors {
+        val quantityValue = uiState.quantity.toLongOrNull()
+        val unitPriceText = normalizeDecimalInput(uiState.unitPrice)
+        val unitPriceValue = unitPriceText.toDoubleOrNull()
+
+        return WorkRecordValidationErrors(
+            style = if (uiState.style.trim().isBlank()) WorkRecordFieldError.Required else null,
+            processName = if (uiState.processName.trim().isBlank()) {
+                WorkRecordFieldError.Required
+            } else {
+                null
+            },
+            quantity = when {
+                uiState.quantity.trim().isBlank() -> WorkRecordFieldError.Required
+                quantityValue == null -> WorkRecordFieldError.InvalidNumber
+                quantityValue <= 0L -> WorkRecordFieldError.MustBePositive
+                else -> null
+            },
+            unitPrice = when {
+                unitPriceText.isBlank() -> WorkRecordFieldError.Required
+                unitPriceValue == null -> WorkRecordFieldError.InvalidNumber
+                unitPriceValue < 0.0 -> WorkRecordFieldError.MustBeNonNegative
+                else -> null
+            }
+        )
+    }
+
+    private fun isValidProcessInput(name: String, defaultPrice: Double, unit: String): Boolean {
+        return name.isNotBlank() &&
+            unit.isNotBlank() &&
+            defaultPrice.isFinite() &&
+            defaultPrice >= 0.0
+    }
+
+    private fun asColorOperationError(error: Throwable): Throwable {
+        return when (error) {
+            is ColorPresetNameConflictException ->
+                ColorPresetAlreadyExistsException(error.presetName)
+            is ColorGroupNameConflictException ->
+                ColorGroupAlreadyExistsException(error.groupName)
+            is InvalidColorPresetInputException,
+            is ColorPresetAlreadyExistsException,
+            is InvalidColorGroupInputException,
+            is ColorGroupAlreadyExistsException,
+            is ColorOperationFailedException -> error
+            else -> ColorOperationFailedException()
         }
     }
 }
 
-data class WorkRecordUiState(
-    val workRecordDetails: WorkRecordDetails = WorkRecordDetails(),
-    val isEntryValid: Boolean = false
-)
+private fun WorkRecordDetails.toLastUsedDefaults(): WorkRecordLastUsedDefaults {
+    return WorkRecordLastUsedDefaults(
+        processId = processId,
+        processName = processName,
+        style = style.trim(),
+        unitPrice = normalizeDecimalInput(unitPrice)
+    )
+}
 
-data class WorkRecordDetails(
-    val id: Long = 0,
-    val processId: Long? = null,
-    val processName: String = "",
-    val style: String = "",
-    val unitPrice: String = "",
-    val quantity: String = "",
-    val amount: String = "0.00",
-    val startTime: Long = 0,
-    val endTime: Long = 0,
-    val remark: String = "",
-    val totalQuantity: String = "",
-    val serialNumber: String = "",
-    val color: String = "",
-    val colorEntries: List<ColorEntryUi> = emptyList(),
-    val imagePaths: List<String> = emptyList(),
-    val date: Long = System.currentTimeMillis()
-)
-
-data class ColorEntryUi(
-    val colorName: String,
-    val colorHex: String,
-    val quantity: String,
-    val deficit: String = "",  // Deficit
-    val colorCode: String = ""  // Color code
-)
+private fun emptyNewEntryDetails(
+    date: Long = System.currentTimeMillis()
+): WorkRecordDetails {
+    return WorkRecordDetails(
+        date = if (date > 0L) date else System.currentTimeMillis()
+    )
+}
 
 private fun formatQuantity(value: Long): String {
     return value.toString()
@@ -665,4 +796,3 @@ private fun parseLegacyColorEntries(text: String): List<ColorEntryUi> {
     }.toList()
     return if (matched.isNotEmpty()) matched else listOf(ColorEntryUi(text.trim(), "#9E9E9E", ""))
 }
-

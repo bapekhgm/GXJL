@@ -35,7 +35,9 @@ fun ProcessRecordNavHost(
     ) {
         composable(route = ProcessRecordScreen.Home.name) {
             HomeScreen(
-                navigateToRecordEntry = { navController.navigate(ProcessRecordScreen.WorkRecordEntry.name) },
+                navigateToRecordAdd = {
+                    navController.navigate(ProcessRecordScreen.WorkRecordEntry.name)
+                },
                 navigateToRecordEdit = { recordId -> navController.navigate("${ProcessRecordScreen.WorkRecordEntry.name}?recordId=$recordId") },
                 navigateToRecordCopy = { recordId -> navController.navigate("${ProcessRecordScreen.WorkRecordEntry.name}?copyFromId=$recordId") },
                 navigateToProcessList = { navController.navigate(ProcessRecordScreen.ProcessList.name) },
