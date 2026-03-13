@@ -13,15 +13,22 @@ interface StyleDao {
     @Query("SELECT * FROM styles ORDER BY name ASC")
     fun getAllStyles(): Flow<List<Style>>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertStyle(style: Style)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertStyle(style: Style): Long
 
     @Delete
     suspend fun deleteStyle(style: Style)
 
-    @Query("DELETE FROM styles WHERE name = :name")
+    @Query("DELETE FROM styles WHERE LOWER(TRIM(name)) = LOWER(TRIM(:name))")
     suspend fun deleteStyleByName(name: String)
 
-    @Query("SELECT * FROM styles WHERE name = :name LIMIT 1")
+    @Query(
+        """
+        SELECT * FROM styles
+        WHERE LOWER(TRIM(name)) = LOWER(TRIM(:name))
+        ORDER BY id ASC
+        LIMIT 1
+        """
+    )
     suspend fun getStyleByName(name: String): Style?
 }

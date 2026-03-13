@@ -14,7 +14,7 @@ interface ColorGroupDao {
     @Query("SELECT * FROM color_groups ORDER BY sortOrder ASC, id ASC")
     fun getAllGroups(): Flow<List<ColorGroup>>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertGroup(group: ColorGroup): Long
 
     @Update
@@ -23,6 +23,13 @@ interface ColorGroupDao {
     @Delete
     suspend fun deleteGroup(group: ColorGroup)
 
-    @Query("SELECT * FROM color_groups WHERE name = :name LIMIT 1")
+    @Query(
+        """
+        SELECT * FROM color_groups
+        WHERE LOWER(TRIM(name)) = LOWER(TRIM(:name))
+        ORDER BY id ASC
+        LIMIT 1
+        """
+    )
     suspend fun getGroupByName(name: String): ColorGroup?
 }

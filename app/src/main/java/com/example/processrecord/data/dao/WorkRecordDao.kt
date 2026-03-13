@@ -21,10 +21,7 @@ interface WorkRecordDao {
     fun getAllRecords(): Flow<List<WorkRecord>>
 
     @Query("SELECT SUM(amount) FROM work_records WHERE date >= :startDate AND date <= :endDate")
-    fun getTotalAmountByDateRange(startDate: Long, endDate: Long): Flow<Double?>
-
-    @Query("SELECT SUM(amount) FROM work_records WHERE date >= :startDate AND date <= :endDate")
-    fun getTotalAmountByRange(startDate: Long, endDate: Long): Flow<Double?>
+    fun getTotalAmountByDateRange(startDate: Long, endDate: Long): Flow<Long?>
 
     @Query("SELECT style, SUM(amount) as totalAmount FROM work_records GROUP BY style ORDER BY totalAmount DESC")
     fun getStatsByStyle(): Flow<List<StyleStat>>
@@ -44,10 +41,9 @@ interface WorkRecordDao {
     @Query("SELECT * FROM work_records WHERE id = :id")
     suspend fun getRecordById(id: Long): WorkRecord?
 
-    /** 查询指定月份内有记录的日期（返回每天0点时间戳列表） */
+    /** 查询指定月份内有记录的时间戳（由上层统一按本地时区折叠到天） */
     @Query("""
-        SELECT DISTINCT 
-            (date / 86400000) * 86400000 
+        SELECT DISTINCT date
         FROM work_records 
         WHERE date >= :monthStart AND date < :monthEnd
     """)
@@ -119,5 +115,5 @@ interface WorkRecordDao {
 
 data class StyleStat(
     val style: String,
-    val totalAmount: Double
+    val totalAmount: Long
 )

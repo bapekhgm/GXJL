@@ -14,8 +14,18 @@ interface ColorPresetDao {
     @Query("SELECT * FROM color_presets ORDER BY sortOrder ASC, id ASC")
     fun getAllPresets(): Flow<List<ColorPreset>>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertPreset(preset: ColorPreset): Long
+
+    @Query(
+        """
+        SELECT * FROM color_presets
+        WHERE LOWER(TRIM(name)) = LOWER(TRIM(:name))
+        ORDER BY id ASC
+        LIMIT 1
+        """
+    )
+    suspend fun getPresetByName(name: String): ColorPreset?
 
     @Update
     suspend fun updatePreset(preset: ColorPreset)

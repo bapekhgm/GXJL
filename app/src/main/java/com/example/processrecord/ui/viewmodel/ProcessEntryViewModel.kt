@@ -8,9 +8,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.processrecord.data.ProcessRepository
 import com.example.processrecord.data.entity.Process
-import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+
+class ProcessAlreadyExistsException(val processName: String) : IllegalArgumentException()
+class InvalidProcessInputException : IllegalArgumentException()
+class ProcessNotFoundException : NoSuchElementException()
 
 class ProcessEntryViewModel(
     savedStateHandle: SavedStateHandle,
@@ -34,28 +36,69 @@ class ProcessEntryViewModel(
     }
 
     fun updateUiState(processDetails: ProcessDetails) {
-        processUiState = ProcessUiState(processDetails = processDetails, isEntryValid = validateInput(processDetails))
+        processUiState = ProcessUiState(
+            processDetails = processDetails,
+            isEntryValid = validateInput(processDetails)
+        )
     }
 
     private fun validateInput(uiState: ProcessDetails = processUiState.processDetails): Boolean {
         return with(uiState) {
-            name.isNotBlank() && defaultPrice.isNotBlank() && unit.isNotBlank()
+            name.isNotBlank() && isValidPrice(defaultPrice) && unit.isNotBlank()
         }
     }
 
-    suspend fun saveProcess() {
-        if (validateInput()) {
+    private fun isValidPrice(input: String): Boolean {
+        val normalized = normalizeDecimalInput(input)
+        if (normalized.isEmpty()) return false
+        val parsed = normalized.toDoubleOrNull() ?: return false
+        return parsed.isFinite() && parsed >= 0.0
+    }
+
+    suspend fun saveProcess(): Result<Unit> {
+        if (!validateInput()) {
+            return Result.failure(InvalidProcessInputException())
+        }
+        return runCatching {
+            val normalized = processUiState.processDetails.copy(
+                name = processUiState.processDetails.name.trim(),
+                unit = processUiState.processDetails.unit.trim()
+            )
+            val existing = processRepository.getProcessByName(normalized.name)
             if (processId != null) {
-                processRepository.updateProcess(processUiState.processDetails.toProcess().copy(id = processId))
+                if (existing != null && existing.id != processId) {
+                    throw ProcessAlreadyExistsException(normalized.name)
+                }
+                processRepository.updateProcess(
+                    normalized.toProcess().copy(
+                        id = processId,
+                        isActive = true
+                    )
+                )
             } else {
-                processRepository.insertProcess(processUiState.processDetails.toProcess())
+                when {
+                    existing == null -> processRepository.insertProcess(
+                        normalized.toProcess().copy(isActive = true)
+                    )
+
+                    existing.isActive -> throw ProcessAlreadyExistsException(normalized.name)
+
+                    else -> processRepository.updateProcess(
+                        normalized.toProcess().copy(
+                            id = existing.id,
+                            isActive = true
+                        )
+                    )
+                }
             }
+            Unit
         }
     }
 
-    suspend fun deleteProcess() {
-        if (processId != null) {
-            processRepository.deleteProcess(processUiState.processDetails.toProcess().copy(id = processId))
+    suspend fun deleteProcess(): Result<Unit> {
+        val targetProcessId = processId ?: return Result.failure(ProcessNotFoundException())
+        return runCatching {
+            processRepository.deleteProcess(processUiState.processDetails.toProcess().copy(id = targetProcessId))
         }
     }
 }

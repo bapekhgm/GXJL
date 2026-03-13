@@ -8,10 +8,27 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.util.Locale
+
+private val STYLE_SPLIT_REGEX = Regex("[\\n,\\uFF0C\\u3001\\s]+")
+
+internal fun splitStyleNames(text: String): List<String> {
+    return text
+        .split(STYLE_SPLIT_REGEX)
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .distinctBy { it.lowercase(Locale.getDefault()) }
+}
 
 class StyleManageViewModel(
     private val styleRepository: StyleRepository
 ) : ViewModel() {
+
+    sealed interface AddStyleResult {
+        data object EmptyName : AddStyleResult
+        data class Duplicate(val name: String) : AddStyleResult
+        data class Added(val name: String) : AddStyleResult
+    }
 
     val styleList: StateFlow<List<Style>> =
         styleRepository.getAllStylesStream()
@@ -21,19 +38,23 @@ class StyleManageViewModel(
                 initialValue = emptyList()
             )
 
-    fun addStyle(name: String, onResult: (Boolean, String) -> Unit) {
+    fun addStyle(name: String, onResult: (AddStyleResult) -> Unit) {
         val trimmed = name.trim()
         if (trimmed.isBlank()) {
-            onResult(false, "款号不能为空")
+            onResult(AddStyleResult.EmptyName)
             return
         }
         viewModelScope.launch {
             val existing = styleRepository.getStyleByName(trimmed)
             if (existing != null) {
-                onResult(false, "款号「$trimmed」已存在")
+                onResult(AddStyleResult.Duplicate(trimmed))
             } else {
-                styleRepository.insertStyle(Style(name = trimmed))
-                onResult(true, "已添加款号「$trimmed」")
+                val insertedId = styleRepository.insertStyle(Style(name = trimmed))
+                if (insertedId == -1L) {
+                    onResult(AddStyleResult.Duplicate(trimmed))
+                } else {
+                    onResult(AddStyleResult.Added(trimmed))
+                }
             }
         }
     }
@@ -45,10 +66,7 @@ class StyleManageViewModel(
     }
 
     fun batchAddStyles(text: String, onResult: (Int, Int) -> Unit) {
-        val names = text.split("\n", "，", ",", " ", "、")
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
-            .distinct()
+        val names = splitStyleNames(text)
         if (names.isEmpty()) {
             onResult(0, 0)
             return
@@ -57,9 +75,8 @@ class StyleManageViewModel(
             var added = 0
             var skipped = 0
             names.forEach { name ->
-                val existing = styleRepository.getStyleByName(name)
-                if (existing == null) {
-                    styleRepository.insertStyle(Style(name = name))
+                val insertedId = styleRepository.insertStyle(Style(name = name))
+                if (insertedId != -1L) {
                     added++
                 } else {
                     skipped++

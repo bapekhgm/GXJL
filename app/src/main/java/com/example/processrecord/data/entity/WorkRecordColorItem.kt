@@ -15,7 +15,7 @@ import androidx.room.PrimaryKey
             onDelete = ForeignKey.CASCADE
         )
     ],
-    indices = [Index(value = ["workRecordId"])]
+    indices = [Index("workRecordId")]
 )
 data class WorkRecordColorItem(
     @PrimaryKey(autoGenerate = true)
@@ -23,6 +23,8 @@ data class WorkRecordColorItem(
     val workRecordId: Long,
     val colorName: String,
     val colorHex: String,
-    val quantity: Double,
+    val quantity: Long,
+    val deficit: Long,
+    val colorCode: String = "",
     val sortOrder: Int = 0
 )

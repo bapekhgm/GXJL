@@ -14,6 +14,15 @@ interface WorkRecordImageDao {
     @Query("SELECT * FROM work_record_images WHERE workRecordId = :workRecordId ORDER BY createTime ASC")
     suspend fun getImagesByWorkRecordId(workRecordId: Long): List<WorkRecordImage>
 
+    @Query(
+        "SELECT * FROM work_record_images WHERE workRecordId IN (:recordIds) " +
+            "ORDER BY workRecordId ASC, createTime ASC, id ASC"
+    )
+    suspend fun getImagesByWorkRecordIds(recordIds: List<Long>): List<WorkRecordImage>
+
+    @Query("SELECT COUNT(*) FROM work_record_images WHERE imagePath = :imagePath")
+    suspend fun countByImagePath(imagePath: String): Int
+
     @Delete
     suspend fun delete(image: WorkRecordImage)
     

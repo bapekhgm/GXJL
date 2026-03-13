@@ -14,8 +14,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -28,21 +28,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import com.example.processrecord.R
 
-/**
- * 自定义日历选择弹窗
- * 有记录的日期显示蓝色圆点标记，当前选中日期高亮
- */
 @Composable
 fun RecordCalendarDialog(
     selectedDate: Long,
     calendarYear: Int,
-    calendarMonth: Int,   // 0-based
-    recordDates: Set<String>,  // "yyyy-MM-dd"
+    calendarMonth: Int, // 0-based
+    recordDates: Set<String>, // "yyyy-MM-dd"
     onDismiss: () -> Unit,
     onDateSelected: (Long) -> Unit,
     onMonthChanged: (year: Int, month: Int) -> Unit
@@ -68,8 +66,15 @@ fun RecordCalendarDialog(
     var firstDayOfWeek = firstDayCal.get(java.util.Calendar.DAY_OF_WEEK) - 2
     if (firstDayOfWeek < 0) firstDayOfWeek = 6
 
-    val monthNames = listOf("1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月")
-    val weekDays = listOf("一","二","三","四","五","六","日")
+    val weekDays = listOf(
+        stringResource(R.string.record_calendar_week_mon),
+        stringResource(R.string.record_calendar_week_tue),
+        stringResource(R.string.record_calendar_week_wed),
+        stringResource(R.string.record_calendar_week_thu),
+        stringResource(R.string.record_calendar_week_fri),
+        stringResource(R.string.record_calendar_week_sat),
+        stringResource(R.string.record_calendar_week_sun)
+    )
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -89,10 +94,17 @@ fun RecordCalendarDialog(
                         c.add(java.util.Calendar.MONTH, -1)
                         onMonthChanged(c.get(java.util.Calendar.YEAR), c.get(java.util.Calendar.MONTH))
                     }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "上月")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.record_calendar_previous_month)
+                        )
                     }
                     Text(
-                        text = "${calendarYear}年 ${monthNames[calendarMonth]}",
+                        text = stringResource(
+                            R.string.record_calendar_month_title,
+                            calendarYear,
+                            calendarMonth + 1
+                        ),
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                     )
                     IconButton(onClick = {
@@ -101,22 +113,27 @@ fun RecordCalendarDialog(
                         c.add(java.util.Calendar.MONTH, 1)
                         onMonthChanged(c.get(java.util.Calendar.YEAR), c.get(java.util.Calendar.MONTH))
                     }) {
-                        Icon(Icons.Default.ArrowForward, contentDescription = "下月")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = stringResource(R.string.record_calendar_next_month)
+                        )
                     }
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Row(modifier = Modifier.fillMaxWidth()) {
-                    weekDays.forEach { day ->
+                    weekDays.forEachIndexed { index, day ->
                         Text(
                             text = day,
                             modifier = Modifier.weight(1f),
                             textAlign = TextAlign.Center,
                             style = MaterialTheme.typography.labelSmall,
-                            color = if (day == "六" || day == "日")
+                            color = if (index >= 5) {
                                 MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
-                            else MaterialTheme.colorScheme.onSurfaceVariant
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            }
                         )
                     }
                 }
@@ -133,7 +150,11 @@ fun RecordCalendarDialog(
                             if (day < 1 || day > daysInMonth) {
                                 Box(modifier = Modifier.weight(1f).height(40.dp))
                             } else {
-                                val dateStr = "%04d-%02d-%02d".format(calendarYear, calendarMonth + 1, day)
+                                val dateStr = "%04d-%02d-%02d".format(
+                                    calendarYear,
+                                    calendarMonth + 1,
+                                    day
+                                )
                                 val isSelected = dateStr == selectedStr
                                 val isToday = dateStr == todayStr
                                 val hasRecord = dateStr in recordDates
@@ -164,7 +185,11 @@ fun RecordCalendarDialog(
                                         Text(
                                             text = day.toString(),
                                             style = MaterialTheme.typography.bodySmall.copy(
-                                                fontWeight = if (isSelected || isToday) FontWeight.Bold else FontWeight.Normal
+                                                fontWeight = if (isSelected || isToday) {
+                                                    FontWeight.Bold
+                                                } else {
+                                                    FontWeight.Normal
+                                                }
                                             ),
                                             color = when {
                                                 isSelected -> MaterialTheme.colorScheme.onPrimary
@@ -177,8 +202,11 @@ fun RecordCalendarDialog(
                                                 modifier = Modifier
                                                     .size(4.dp)
                                                     .background(
-                                                        if (isSelected) MaterialTheme.colorScheme.onPrimary
-                                                        else MaterialTheme.colorScheme.primary,
+                                                        if (isSelected) {
+                                                            MaterialTheme.colorScheme.onPrimary
+                                                        } else {
+                                                            MaterialTheme.colorScheme.primary
+                                                        },
                                                         CircleShape
                                                     )
                                             )
@@ -196,13 +224,35 @@ fun RecordCalendarDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Box(modifier = Modifier.size(8.dp).background(MaterialTheme.colorScheme.primary, CircleShape))
-                        Text("有记录", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .background(MaterialTheme.colorScheme.primary, CircleShape)
+                        )
+                        Text(
+                            text = stringResource(R.string.record_calendar_has_record),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Box(modifier = Modifier.size(8.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape))
-                        Text("今天", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .background(MaterialTheme.colorScheme.primaryContainer, CircleShape)
+                        )
+                        Text(
+                            text = stringResource(R.string.record_calendar_today),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
 
@@ -210,8 +260,11 @@ fun RecordCalendarDialog(
                 TextButton(
                     onClick = onDismiss,
                     modifier = Modifier.align(Alignment.End)
-                ) { Text("关闭") }
+                ) {
+                    Text(stringResource(R.string.common_close))
+                }
             }
         }
     }
 }
+

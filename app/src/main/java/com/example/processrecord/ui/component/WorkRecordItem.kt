@@ -1,15 +1,18 @@
 package com.example.processrecord.ui.component
 
-import com.google.accompanist.flowlayout.FlowRow
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
@@ -23,26 +26,30 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.graphics.toColorInt
+import com.example.processrecord.R
 import com.example.processrecord.data.entity.WorkRecord
 import com.example.processrecord.data.entity.WorkRecordColorItem
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/** 解析 hex 颜色字符串，失败时返回 null */
 internal fun parseHexColor(hex: String): Color? = try {
-    Color(android.graphics.Color.parseColor(hex))
-} catch (_: Exception) { null }
+    Color(hex.toColorInt())
+} catch (_: Exception) {
+    null
+}
 
-/** 判断颜色是否偏亮，用于决定文字颜色 */
 internal fun Color.isLight(): Boolean {
     val luminance = 0.299 * red + 0.587 * green + 0.114 * blue
     return luminance > 0.6f
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun WorkRecordItem(
     record: WorkRecord,
@@ -52,7 +59,13 @@ fun WorkRecordItem(
     modifier: Modifier = Modifier
 ) {
     val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
-    fun fmtQty(v: Double) = if (v % 1.0 == 0.0) v.toLong().toString() else "%.2f".format(v)
+
+    fun fmtAmount(cents: Long): String {
+        val yuan = cents / 100.0
+        return String.format(Locale.getDefault(), "%.2f", yuan)
+    }
+
+    fun fmtQty(value: Long): String = value.toString()
 
     Card(
         modifier = modifier
@@ -63,7 +76,6 @@ fun WorkRecordItem(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
     ) {
         Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-            // 第一行：款号 + 序号 + 金额
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -88,13 +100,17 @@ fun WorkRecordItem(
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier
-                                .background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(4.dp))
+                                .background(
+                                    MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    RoundedCornerShape(4.dp)
+                                )
                                 .padding(horizontal = 5.dp, vertical = 1.dp)
                         )
                     }
                 }
+
                 Text(
-                    text = "¥ ${String.format(Locale.getDefault(), "%.2f", record.amount)}",
+                    text = stringResource(R.string.work_record_value_amount, fmtAmount(record.amount)),
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
                     color = MaterialTheme.colorScheme.primary
                 )
@@ -102,7 +118,6 @@ fun WorkRecordItem(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // 第二行：工序 + 数量×单价 + 总数量
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -110,22 +125,31 @@ fun WorkRecordItem(
             ) {
                 Text(
                     text = record.processName,
-                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                    color = Color(0xFFE53935),
                     modifier = Modifier
                         .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(6.dp))
                         .padding(horizontal = 8.dp, vertical = 2.dp)
                 )
+
                 if (record.quantity > 0) {
+                    val quantityPriceText = if (record.unitPrice > 0) {
+                        stringResource(
+                            R.string.work_record_item_quantity_times_price,
+                            fmtQty(record.quantity),
+                            fmtAmount(record.unitPrice)
+                        )
+                    } else {
+                        fmtQty(record.quantity)
+                    }
+
                     Text(
-                        text = buildString {
-                            append(fmtQty(record.quantity))
-                            if (record.unitPrice > 0) append(" × ¥${fmtQty(record.unitPrice)}")
-                        },
+                        text = quantityPriceText,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+
                 if (record.totalQuantity > 0 && record.totalQuantity != record.quantity) {
                     Spacer(modifier = Modifier.weight(1f))
                     Row(
@@ -142,48 +166,125 @@ fun WorkRecordItem(
                             )
                             .padding(horizontal = 10.dp, vertical = 3.dp)
                     ) {
-                        Text("总", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f))
+                        Text(
+                            text = stringResource(R.string.work_record_item_total_label),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                        )
                         Spacer(modifier = Modifier.width(3.dp))
-                        Text(fmtQty(record.totalQuantity), style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
+                        Text(
+                            text = fmtQty(record.totalQuantity),
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     }
                 }
             }
 
-            // 第三行：颜色明细
             val hasColorItems = colorItems.isNotEmpty()
             val hasColorText = record.color.isNotBlank()
             if (hasColorItems || hasColorText) {
                 Spacer(modifier = Modifier.height(6.dp))
                 if (hasColorItems) {
-                    FlowRow(mainAxisSpacing = 5.dp, crossAxisSpacing = 5.dp) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         colorItems.forEach { item ->
-                            val bgColor = parseHexColor(item.colorHex) ?: MaterialTheme.colorScheme.secondaryContainer
-                            val textColor = if (bgColor.isLight()) Color(0xFF212121) else Color.White
+                            val bgColor = parseHexColor(item.colorHex)
+                                ?: MaterialTheme.colorScheme.secondaryContainer
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.background(bgColor, RoundedCornerShape(20.dp)).padding(horizontal = 8.dp, vertical = 3.dp)
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                Text(item.colorName, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium), color = textColor)
+                                Box(
+                                    modifier = Modifier
+                                        .size(16.dp)
+                                        .background(bgColor, RoundedCornerShape(3.dp))
+                                )
+                                Text(
+                                    text = item.colorName,
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.Medium
+                                    ),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
                                 if (item.quantity > 0) {
-                                    Text(" · ${fmtQty(item.quantity)}", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = textColor.copy(alpha = 0.85f))
+                                    Text(
+                                        text = fmtQty(item.quantity),
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier
+                                            .background(
+                                                MaterialTheme.colorScheme.surfaceContainerHigh,
+                                                RoundedCornerShape(4.dp)
+                                            )
+                                            .padding(horizontal = 5.dp, vertical = 1.dp)
+                                    )
+                                }
+                                if (item.deficit > 0) {
+                                    Text(
+                                        text = stringResource(
+                                            R.string.work_record_item_deficit_value,
+                                            fmtQty(item.deficit)
+                                        ),
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        color = Color(0xFFFF6B6B),
+                                        modifier = Modifier
+                                            .background(Color(0xFFFFE5E5), RoundedCornerShape(4.dp))
+                                            .padding(horizontal = 5.dp, vertical = 1.dp)
+                                    )
+                                }
+                                if (!item.colorCode.isNullOrBlank()) {
+                                    Text(
+                                        text = stringResource(
+                                            R.string.work_record_item_color_code_value,
+                                            item.colorCode
+                                        ),
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier
+                                            .background(
+                                                MaterialTheme.colorScheme.surfaceContainerHigh,
+                                                RoundedCornerShape(4.dp)
+                                            )
+                                            .padding(horizontal = 5.dp, vertical = 1.dp)
+                                    )
                                 }
                             }
                         }
                     }
                 } else {
-                    val colorList = record.color.split(Regex("\\s+")).map { it.trim() }.filter { it.isNotEmpty() }
-                    FlowRow(mainAxisSpacing = 4.dp, crossAxisSpacing = 4.dp) {
+                    val colorList = record.color
+                        .split(Regex("\\s+"))
+                        .map { it.trim() }
+                        .filter { it.isNotEmpty() }
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
                         colorList.forEach { colorItem ->
                             val regex = Regex("([\\u4e00-\\u9fa5A-Za-z]+)(\\d+(?:\\.\\d+)?)?")
                             val match = regex.find(colorItem)
                             val name = match?.groupValues?.get(1) ?: colorItem
                             val qty = match?.groupValues?.getOrNull(2)?.takeIf { it.isNotBlank() }
+                            val text = if (qty != null) {
+                                stringResource(R.string.work_record_item_color_chip_with_qty, name, qty)
+                            } else {
+                                name
+                            }
                             Text(
-                                text = if (qty != null) "$name·$qty" else name,
+                                text = text,
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer,
                                 modifier = Modifier
-                                    .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f), RoundedCornerShape(4.dp))
+                                    .background(
+                                        MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
+                                        RoundedCornerShape(4.dp)
+                                    )
                                     .padding(horizontal = 6.dp, vertical = 2.dp)
                             )
                         }
@@ -191,50 +292,101 @@ fun WorkRecordItem(
                 }
             }
 
-            // 时间行
             if (record.startTime > 0) {
                 Spacer(modifier = Modifier.height(5.dp))
-                HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                HorizontalDivider(
+                    thickness = 0.5.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                )
                 Spacer(modifier = Modifier.height(4.dp))
-                val dateFormat2 = SimpleDateFormat("MM/dd", Locale.getDefault())
-                val startDateStr = dateFormat2.format(Date(record.startTime))
+
+                val dateFormat = SimpleDateFormat("MM/dd", Locale.getDefault())
+                val startDateStr = dateFormat.format(Date(record.startTime))
                 val startTimeStr = timeFormat.format(Date(record.startTime))
                 val endStr = if (record.endTime > 0) {
-                    val endDateStr = dateFormat2.format(Date(record.endTime))
+                    val endDateStr = dateFormat.format(Date(record.endTime))
                     val endTimeStr = timeFormat.format(Date(record.endTime))
                     if (endDateStr != startDateStr) "$endDateStr $endTimeStr" else endTimeStr
-                } else ""
-                val durText = if (record.endTime > record.startTime) {
+                } else {
+                    ""
+                }
+                val durationText = if (record.endTime > record.startTime) {
                     val ms = record.endTime - record.startTime
-                    val d = ms / 86400000L; val h = (ms % 86400000L) / 3600000L; val m = (ms % 3600000L) / 60000L
-                    buildString { append("  "); if (d > 0) append("${d}天"); if (h > 0) append("${h}h"); append("${m}m") }
-                } else ""
+                    val d = ms / 86_400_000L
+                    val h = (ms % 86_400_000L) / 3_600_000L
+                    val m = (ms % 3_600_000L) / 60_000L
+                    buildString {
+                        if (d > 0) append(stringResource(R.string.work_record_duration_day_part, d))
+                        if (h > 0) append(stringResource(R.string.work_record_duration_hour_part, h))
+                        append(stringResource(R.string.work_record_duration_minute_part, m))
+                    }.trim()
+                } else {
+                    ""
+                }
+
+                val timeLineText = buildString {
+                    append(stringResource(R.string.work_record_item_time_prefix))
+                    append(" ")
+                    append(startDateStr)
+                    append(" ")
+                    append(startTimeStr)
+                    if (endStr.isNotEmpty()) {
+                        append(" - ")
+                        append(endStr)
+                    }
+                    if (durationText.isNotEmpty()) {
+                        append("  ")
+                        append(durationText)
+                    }
+                }
+
                 Text(
-                    text = "⏱  $startDateStr $startTimeStr" + (if (endStr.isNotEmpty()) " – $endStr" else "") + durText,
+                    text = timeLineText,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.outline
                 )
             }
 
-            // 备注行
             if (record.remark.isNotBlank()) {
                 Spacer(modifier = Modifier.height(4.dp))
                 if (record.startTime <= 0) {
-                    HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                    HorizontalDivider(
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                    )
                     Spacer(modifier = Modifier.height(4.dp))
                 }
-                Text("💬  ${record.remark}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(
+                    text = stringResource(R.string.work_record_item_remark_prefix, record.remark),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
 
-            // 复制按钮
             if (onCopy != null) {
                 Spacer(modifier = Modifier.height(2.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = onCopy, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp)) {
-                        Text("复制此记录", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(
+                        onClick = onCopy,
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                            horizontal = 8.dp,
+                            vertical = 2.dp
+                        )
+                    ) {
+                        Text(
+                            text = stringResource(R.string.work_record_item_copy_record),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     }
                 }
             }
         }
     }
 }
+
