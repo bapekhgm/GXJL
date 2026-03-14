@@ -24,7 +24,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Style
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -198,6 +202,7 @@ fun HomeScreen(
                         ) {
                             AppDropdownMenuItem(
                                 text = stringResource(R.string.home_menu_process_manage),
+                                leadingIcon = Icons.AutoMirrored.Filled.List,
                                 onClick = {
                                     showExportMenu = false
                                     navigateToProcessList()
@@ -205,6 +210,7 @@ fun HomeScreen(
                             )
                             AppDropdownMenuItem(
                                 text = stringResource(R.string.home_menu_style_manage),
+                                leadingIcon = Icons.Default.Style,
                                 onClick = {
                                     showExportMenu = false
                                     navigateToStyleManage()
@@ -212,6 +218,7 @@ fun HomeScreen(
                             )
                             AppDropdownMenuItem(
                                 text = stringResource(R.string.home_menu_export_all),
+                                leadingIcon = Icons.Default.FileDownload,
                                 onClick = {
                                     showExportMenu = false
                                     exportStartDate = null
@@ -229,6 +236,7 @@ fun HomeScreen(
                             )
                             AppDropdownMenuItem(
                                 text = stringResource(R.string.home_menu_export_current_month),
+                                leadingIcon = Icons.Default.DateRange,
                                 onClick = {
                                     showExportMenu = false
                                     val monthCalendar = java.util.Calendar.getInstance()
@@ -255,6 +263,7 @@ fun HomeScreen(
                             )
                             AppDropdownMenuItem(
                                 text = stringResource(R.string.home_menu_backup),
+                                leadingIcon = Icons.Default.Backup,
                                 onClick = {
                                     showExportMenu = false
                                     navigateToBackup()

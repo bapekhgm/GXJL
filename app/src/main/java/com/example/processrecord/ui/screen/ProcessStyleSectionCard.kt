@@ -21,7 +21,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.Sell
+import androidx.compose.material.icons.filled.Style
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -103,7 +104,7 @@ fun ProcessStyleSectionCard(
             value = workRecordDetails.style,
             onValueChange = { onValueChange(workRecordDetails.copy(style = it)) },
             label = { Text(stringResource(R.string.work_record_label_style)) },
-            leadingIcon = { Icon(imageVector = Icons.Default.ShoppingCart, contentDescription = null) },
+            leadingIcon = { Icon(imageVector = Icons.Default.Style, contentDescription = null) },
             trailingIcon = {
                 Box {
                     Icon(
@@ -630,7 +631,7 @@ fun ProcessStyleSectionCard(
         SectionCard(modifier = modifier) {
             SectionHeader(title = stringResource(R.string.work_record_section_process_style)) {
                 Icon(
-                    imageVector = Icons.Default.ShoppingCart,
+                    imageVector = Icons.Default.Sell,
                     contentDescription = null,
                     modifier = Modifier.size(16.dp)
                 )

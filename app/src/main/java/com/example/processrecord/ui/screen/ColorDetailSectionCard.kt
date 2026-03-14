@@ -61,6 +61,13 @@ import com.example.processrecord.data.entity.ColorPreset
 import com.example.processrecord.ui.viewmodel.ColorEntryUi
 import com.example.processrecord.ui.viewmodel.WorkRecordDetails
 
+internal fun MutableList<ColorPreset>.toggleColorPresetSelection(preset: ColorPreset) {
+    val removed = removeAll { it.id == preset.id }
+    if (!removed) {
+        add(preset)
+    }
+}
+
 private fun readableContentColor(background: Color): Color {
     val luminance = 0.299f * background.red + 0.587f * background.green + 0.114f * background.blue
     return if (luminance > 0.55f) {
@@ -204,7 +211,9 @@ fun ColorDetailSectionCard(
                                                 tint = chipContentColor,
                                                 modifier = Modifier
                                                     .size(14.dp)
-                                                    .clickable { selectedColors.remove(preset) }
+                                                    .clickable {
+                                                        selectedColors.removeAll { it.id == preset.id }
+                                                    }
                                             )
                                         }
                                     }
@@ -248,9 +257,7 @@ fun ColorDetailSectionCard(
                                         AppSelectableRow(
                                             title = preset.name,
                                             subtitle = preset.hexValue,
-                                            onClick = if (isSelected) null else {
-                                                { selectedColors.add(preset) }
-                                            },
+                                            onClick = { selectedColors.toggleColorPresetSelection(preset) },
                                             selected = isSelected,
                                             leadingContent = {
                                                 Box(
