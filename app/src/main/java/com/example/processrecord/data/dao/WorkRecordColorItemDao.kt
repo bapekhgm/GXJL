@@ -19,6 +19,16 @@ interface WorkRecordColorItemDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(items: List<WorkRecordColorItem>)
 
+    @Query(
+        """
+        UPDATE work_record_color_items
+        SET colorName = :newName,
+            colorHex = :newHex
+        WHERE colorName = :previousName COLLATE NOCASE
+        """
+    )
+    suspend fun updatePresetUsage(previousName: String, newName: String, newHex: String): Int
+
     @Query("DELETE FROM work_record_color_items WHERE workRecordId = :recordId")
     suspend fun deleteByRecordId(recordId: Long)
 }

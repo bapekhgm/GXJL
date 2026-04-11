@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import com.example.processrecord.data.WorkRecordRepository
+import com.example.processrecord.data.entity.WorkRecordColorItem
 import jxl.Workbook
 import jxl.write.Label
 import jxl.write.Number
@@ -83,14 +84,7 @@ class ExportViewModel(
                         val row = headerRow + 1 + index
                         val images = imagesByRecordId[record.id].orEmpty().joinToString(" | ")
                         val colorItems = colorItemsByRecordId[record.id].orEmpty()
-                        val colorDetail = colorItems.joinToString("; ") { item ->
-                            buildString {
-                                append(item.colorName)
-                                if (item.quantity > 0) append("|${item.quantity}")
-                                if (item.deficit > 0) append("|欠数${item.deficit}")
-                                if (item.colorCode.isNotBlank()) append("|${item.colorCode}")
-                            }
-                        }
+                        val colorDetail = colorItems.joinToString("; ", transform = ::buildExportColorDetail)
 
                         val unitPriceYuan = centsToYuan(record.unitPrice)
                         val amountYuan = centsToYuan(record.amount)
@@ -179,5 +173,20 @@ class ExportViewModel(
     private fun formatDate(dateFormat: SimpleDateFormat, timestamp: Long): String {
         if (timestamp <= 0L) return ""
         return dateFormat.format(Date(timestamp))
+    }
+}
+
+internal fun buildExportColorDetail(item: WorkRecordColorItem): String {
+    val deficitText = item.deficit.trim()
+    return buildString {
+        append(item.colorName)
+        if (item.quantity > 0) append("|${item.quantity}")
+        if (deficitText.isNotBlank()) {
+            append("|欠数$deficitText")
+            if (item.isDeficitResolved) {
+                append("(已补)")
+            }
+        }
+        if (item.colorCode.isNotBlank()) append("|${item.colorCode}")
     }
 }

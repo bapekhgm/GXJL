@@ -45,7 +45,8 @@ fun WorkRecord.toWorkRecordDetails(): WorkRecordDetails = WorkRecordDetails(
     totalQuantity = totalQuantity.toString(),
     serialNumber = serialNumber,
     color = color,
-    date = date
+    date = date,
+    createTime = createTime
 )
 
 /**
@@ -64,6 +65,7 @@ fun WorkRecordDetails.toWorkRecord(): WorkRecord {
         processId = processId,
         processName = processName,
         style = style,
+        entryGroupId = entryGroupId,
         unitPrice = unitPriceInCents,
         quantity = quantityValue,
         amount = amountInCents,
@@ -73,7 +75,8 @@ fun WorkRecordDetails.toWorkRecord(): WorkRecord {
         totalQuantity = totalQuantityValue,
         serialNumber = serialNumber,
         color = color,
-        date = normalizedDate
+        date = normalizedDate,
+        createTime = createTime
     )
 }
 

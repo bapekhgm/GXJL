@@ -11,6 +11,7 @@ interface WorkRecordRepository {
     fun getAllRecordsStream(): Flow<List<WorkRecord>>
     fun getRecordsByDateStream(date: Long): Flow<List<WorkRecord>>
     fun getRecordsByDateRangeStream(startDate: Long, endDate: Long): Flow<List<WorkRecord>>
+    fun getRecordsByGroupIdStream(entryGroupId: String): Flow<List<WorkRecord>>
     fun getTotalAmountByDateStream(date: Long): Flow<Long?>
     fun getTotalAmountByMonthStream(year: Int, month: Int): Flow<Long?>
     fun getStatsByStyleStream(): Flow<List<StyleStat>>
@@ -20,6 +21,7 @@ interface WorkRecordRepository {
     fun getRecordDatesInMonthStream(monthStart: Long, monthEnd: Long): Flow<List<Long>>
 
     suspend fun getRecordStream(id: Long): WorkRecord?
+    suspend fun getRecordsByGroupId(entryGroupId: String): List<WorkRecord>
     suspend fun getLatestRecord(): WorkRecord?
 
     // Atomic write: record + images + color items in one transaction.
@@ -28,6 +30,8 @@ interface WorkRecordRepository {
         images: List<String>,
         colorItems: List<WorkRecordColorItem>
     ): Long
+
+    suspend fun insertRecordGroupWithDetails(entries: List<WorkRecordInsertPayload>): List<Long>
 
     // Atomic update: replace record + related images + color items in one transaction.
     suspend fun updateRecordWithDetails(
@@ -60,3 +64,9 @@ interface WorkRecordRepository {
     suspend fun updateColorGroup(group: ColorGroup)
     suspend fun deleteColorGroup(group: ColorGroup)
 }
+
+data class WorkRecordInsertPayload(
+    val record: WorkRecord,
+    val images: List<String>,
+    val colorItems: List<WorkRecordColorItem>
+)

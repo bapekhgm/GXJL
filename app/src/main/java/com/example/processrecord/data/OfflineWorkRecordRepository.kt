@@ -5,6 +5,7 @@ import com.example.processrecord.data.dao.ColorPresetDao
 import com.example.processrecord.data.dao.StyleStat
 import com.example.processrecord.data.dao.WorkRecordColorItemDao
 import com.example.processrecord.data.dao.WorkRecordDao
+import com.example.processrecord.data.dao.WorkRecordInsertEntry
 import com.example.processrecord.data.dao.WorkRecordImageDao
 import com.example.processrecord.data.entity.ColorGroup
 import com.example.processrecord.data.entity.ColorPreset
@@ -28,6 +29,9 @@ class OfflineWorkRecordRepository(
 
     override fun getRecordsByDateRangeStream(startDate: Long, endDate: Long): Flow<List<WorkRecord>> =
         workRecordDao.getRecordsByDateRange(startDate, endDate)
+
+    override fun getRecordsByGroupIdStream(entryGroupId: String): Flow<List<WorkRecord>> =
+        workRecordDao.getRecordsByGroupId(entryGroupId)
 
     override fun getRecordsByDateStream(date: Long): Flow<List<WorkRecord>> {
         val calendar = Calendar.getInstance()
@@ -88,6 +92,9 @@ class OfflineWorkRecordRepository(
 
     override suspend fun getRecordStream(id: Long): WorkRecord? = workRecordDao.getRecordById(id)
 
+    override suspend fun getRecordsByGroupId(entryGroupId: String): List<WorkRecord> =
+        workRecordDao.getRecordListByGroupId(entryGroupId)
+
     override suspend fun getLatestRecord(): WorkRecord? = workRecordDao.getLatestRecord()
 
     // Atomic insert: write record + images + color items in one transaction.
@@ -98,6 +105,21 @@ class OfflineWorkRecordRepository(
     ): Long {
         val imageEntities = images.map { path -> WorkRecordImage(workRecordId = 0, imagePath = path) }
         return workRecordDao.insertRecordWithDetails(record, imageEntities, colorItems)
+    }
+
+    override suspend fun insertRecordGroupWithDetails(
+        entries: List<WorkRecordInsertPayload>
+    ): List<Long> {
+        val payloads = entries.map { entry ->
+            WorkRecordInsertEntry(
+                record = entry.record,
+                images = entry.images.map { path ->
+                    WorkRecordImage(workRecordId = 0, imagePath = path)
+                },
+                colorItems = entry.colorItems
+            )
+        }
+        return workRecordDao.insertRecordGroupWithDetails(payloads)
     }
 
     // Atomic update: replace record and related data in one transaction.
@@ -174,7 +196,16 @@ class OfflineWorkRecordRepository(
         if (existing != null && existing.id != preset.id) {
             throw ColorPresetNameConflictException(trimmedName)
         }
-        colorPresetDao.updatePreset(preset.copy(name = trimmedName))
+        val previousPreset = colorPresetDao.getPresetById(preset.id)
+        val normalizedPreset = preset.copy(name = trimmedName)
+        colorPresetDao.updatePreset(normalizedPreset)
+        previousPreset?.let {
+            workRecordColorItemDao.updatePresetUsage(
+                previousName = it.name,
+                newName = normalizedPreset.name,
+                newHex = normalizedPreset.hexValue
+            )
+        }
     }
 
     override suspend fun deleteColorPreset(preset: ColorPreset) {

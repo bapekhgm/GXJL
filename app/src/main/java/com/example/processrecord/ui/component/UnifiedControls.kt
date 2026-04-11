@@ -73,7 +73,7 @@ fun AppPrimaryButton(
         onClick = onClick,
         modifier = modifier.height(height),
         enabled = enabled,
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(18.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = MaterialTheme.colorScheme.primary,
             contentColor = MaterialTheme.colorScheme.onPrimary,
@@ -100,7 +100,7 @@ fun AppSecondaryButton(
         onClick = onClick,
         modifier = modifier.height(height),
         enabled = enabled,
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(18.dp),
         border = BorderStroke(
             width = 1.dp,
             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.85f)
@@ -131,7 +131,7 @@ fun AppDangerButton(
         onClick = onClick,
         modifier = modifier.height(height),
         enabled = enabled,
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(18.dp),
         border = BorderStroke(
             width = 1.dp,
             color = MaterialTheme.colorScheme.error.copy(alpha = 0.45f)
@@ -219,10 +219,19 @@ fun AppActionChip(
 
     Row(
         modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(14.dp))
             .background(backgroundColor)
+            .border(
+                width = 1.dp,
+                color = if (emphasized) {
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                } else {
+                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)
+                },
+                shape = RoundedCornerShape(14.dp)
+            )
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = 12.dp, vertical = 7.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -253,14 +262,14 @@ fun AppDropdownMenu(
     DropdownMenu(
         expanded = expanded,
         onDismissRequest = onDismissRequest,
-        modifier = modifier.widthIn(min = 220.dp),
-        shape = RoundedCornerShape(24.dp),
-        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
+        modifier = modifier.widthIn(min = 228.dp),
+        shape = RoundedCornerShape(20.dp),
+        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.99f),
         tonalElevation = 0.dp,
-        shadowElevation = 12.dp,
+        shadowElevation = 8.dp,
         border = BorderStroke(
             width = 1.dp,
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f)
         ),
         content = content
     )
@@ -289,8 +298,8 @@ fun AppDropdownMenuItem(
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
     val backgroundColor = when {
-        selected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
-        emphasized -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.34f)
+        selected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+        emphasized -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.22f)
         else -> Color.Transparent
     }
 
@@ -299,7 +308,7 @@ fun AppDropdownMenuItem(
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     text = text,
-                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
                     color = titleColor
                 )
                 if (!supportingText.isNullOrBlank()) {
@@ -313,17 +322,18 @@ fun AppDropdownMenuItem(
         },
         onClick = onClick,
         modifier = modifier
-            .padding(horizontal = 6.dp, vertical = 2.dp)
-            .clip(RoundedCornerShape(18.dp))
+            .padding(horizontal = 6.dp, vertical = 1.dp)
+            .clip(RoundedCornerShape(16.dp))
             .background(backgroundColor),
         enabled = enabled,
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+        contentPadding = PaddingValues(horizontal = 11.dp, vertical = 9.dp),
         leadingIcon = leadingIcon?.let { icon ->
             {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = titleColor
+                    tint = titleColor,
+                    modifier = Modifier.size(18.dp)
                 )
             }
         },
@@ -482,14 +492,14 @@ fun AppDialogScaffold(
                 .fillMaxWidth()
                 .widthIn(max = 420.dp)
                 .padding(start = edgePaddingStart, end = edgePaddingEnd),
-            shape = RoundedCornerShape(30.dp),
+            shape = RoundedCornerShape(28.dp),
             border = BorderStroke(
                 width = 1.dp,
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f)
             ),
             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f)
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.99f)
             )
         ) {
             Column(
@@ -497,18 +507,18 @@ fun AppDialogScaffold(
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
-                                MaterialTheme.colorScheme.surface.copy(alpha = 0.97f)
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.12f),
+                                MaterialTheme.colorScheme.surface.copy(alpha = 0.99f)
                             )
                         )
                     )
-                    .padding(horizontal = 22.dp, vertical = 22.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                    .padding(horizontal = 20.dp, vertical = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
                         text = title,
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     if (!supportingText.isNullOrBlank()) {
@@ -522,7 +532,7 @@ fun AppDialogScaffold(
                 content()
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     actions()

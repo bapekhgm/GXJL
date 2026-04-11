@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,8 +13,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.border
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
+import androidx.compose.material.icons.filled.Calculate
+import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -116,23 +120,12 @@ fun RecordAmountSectionCard(
 
     @Composable
     fun AmountFields() {
-        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            val stackFields = maxWidth < 420.dp
-
-            if (stackFields) {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    QuantityField(fieldModifier = Modifier.fillMaxWidth())
-                    UnitPriceField(fieldModifier = Modifier.fillMaxWidth())
-                }
-            } else {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    QuantityField(fieldModifier = Modifier.weight(1f))
-                    UnitPriceField(fieldModifier = Modifier.weight(1f))
-                }
-            }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            QuantityField(fieldModifier = Modifier.weight(1f))
+            UnitPriceField(fieldModifier = Modifier.weight(1f))
         }
 
         Spacer(modifier = Modifier.height(10.dp))
@@ -143,10 +136,15 @@ fun RecordAmountSectionCard(
                 .background(
                     brush = Brush.horizontalGradient(
                         listOf(
-                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
-                            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f)
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.88f)
                         )
                     ),
+                    shape = MaterialTheme.shapes.small
+                )
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.24f),
                     shape = MaterialTheme.shapes.small
                 )
                 .padding(horizontal = 16.dp, vertical = 14.dp)
@@ -164,7 +162,7 @@ fun RecordAmountSectionCard(
                 Text(
                     text = stringResource(R.string.work_record_value_amount, workRecordDetails.amount),
                     style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.ExtraBold),
-                    color = MaterialTheme.colorScheme.primary
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
         }
@@ -178,10 +176,13 @@ fun RecordAmountSectionCard(
             AmountFields()
         }
     } else {
-        SectionCard(modifier = modifier) {
+        SectionCard(
+            modifier = modifier,
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp)
+        ) {
             SectionHeader(title = stringResource(R.string.work_record_section_quantity_amount)) {
                 Icon(
-                    imageVector = Icons.Default.Info,
+                    imageVector = Icons.Default.Calculate,
                     contentDescription = null,
                     modifier = Modifier.size(16.dp)
                 )
@@ -196,10 +197,12 @@ fun RecordRemarkSectionCard(
     workRecordDetails: WorkRecordDetails,
     onValueChange: (WorkRecordDetails) -> Unit
 ) {
-    SectionCard {
+    SectionCard(
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp)
+    ) {
         SectionHeader(title = stringResource(R.string.work_record_section_remark_optional)) {
             Icon(
-                imageVector = Icons.Default.Info,
+                imageVector = Icons.Default.EditNote,
                 contentDescription = null,
                 modifier = Modifier.size(16.dp)
             )
@@ -222,93 +225,55 @@ fun RecordExtraFieldsSectionCard(
     workRecordDetails: WorkRecordDetails,
     onValueChange: (WorkRecordDetails) -> Unit
 ) {
-    SectionCard {
+    SectionCard(
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp)
+    ) {
         SectionHeader(title = stringResource(R.string.work_record_section_extra_optional)) {
             Icon(
-                imageVector = Icons.Default.Info,
+                imageVector = Icons.AutoMirrored.Filled.ReceiptLong,
                 contentDescription = null,
                 modifier = Modifier.size(16.dp)
             )
         }
 
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            val stackFields = maxWidth < 420.dp
-
-            if (stackFields) {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(
-                        value = workRecordDetails.serialNumber,
-                        onValueChange = { onValueChange(workRecordDetails.copy(serialNumber = it)) },
-                        label = { Text(stringResource(R.string.work_record_label_serial_number)) },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        shape = AppTextFieldShape,
-                        colors = appOutlinedTextFieldColors()
-                    )
-                    OutlinedTextField(
-                        value = workRecordDetails.totalQuantity,
-                        onValueChange = {
-                            val filtered = it.filter(Char::isDigit)
-                            if (filtered.isEmpty() || filtered.toLongOrNull() != null) {
-                                onValueChange(workRecordDetails.copy(totalQuantity = filtered))
-                            }
-                        },
-                        label = { Text(stringResource(R.string.work_record_label_total_quantity)) },
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Number,
-                            imeAction = ImeAction.Done
-                        ),
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        shape = AppTextFieldShape,
-                        colors = appOutlinedTextFieldColors(),
-                        placeholder = {
-                            Text(
-                                text = "0",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                OutlinedTextField(
+                    value = workRecordDetails.totalQuantity,
+                    onValueChange = {
+                        val filtered = it.filter(Char::isDigit)
+                        if (filtered.isEmpty() || filtered.toLongOrNull() != null) {
+                            onValueChange(workRecordDetails.copy(totalQuantity = filtered))
                         }
-                    )
-                }
-            } else {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    OutlinedTextField(
-                        value = workRecordDetails.serialNumber,
-                        onValueChange = { onValueChange(workRecordDetails.copy(serialNumber = it)) },
-                        label = { Text(stringResource(R.string.work_record_label_serial_number)) },
-                        modifier = Modifier.weight(1f),
-                        singleLine = true,
-                        shape = AppTextFieldShape,
-                        colors = appOutlinedTextFieldColors()
-                    )
-                    OutlinedTextField(
-                        value = workRecordDetails.totalQuantity,
-                        onValueChange = {
-                            val filtered = it.filter(Char::isDigit)
-                            if (filtered.isEmpty() || filtered.toLongOrNull() != null) {
-                                onValueChange(workRecordDetails.copy(totalQuantity = filtered))
-                            }
-                        },
-                        label = { Text(stringResource(R.string.work_record_label_total_quantity)) },
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Number,
-                            imeAction = ImeAction.Done
-                        ),
-                        modifier = Modifier.weight(1f),
-                        singleLine = true,
-                        shape = AppTextFieldShape,
-                        colors = appOutlinedTextFieldColors(),
-                        placeholder = {
-                            Text(
-                                text = "0",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                            )
-                        }
-                    )
-                }
+                    },
+                    label = { Text(stringResource(R.string.work_record_label_total_quantity)) },
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Done
+                    ),
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    shape = AppTextFieldShape,
+                    colors = appOutlinedTextFieldColors(),
+                    placeholder = {
+                        Text(
+                            text = "0",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        )
+                    }
+                )
+                OutlinedTextField(
+                    value = workRecordDetails.serialNumber,
+                    onValueChange = { onValueChange(workRecordDetails.copy(serialNumber = it)) },
+                    label = { Text(stringResource(R.string.work_record_label_serial_number)) },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    shape = AppTextFieldShape,
+                    colors = appOutlinedTextFieldColors()
+                )
             }
         }
     }

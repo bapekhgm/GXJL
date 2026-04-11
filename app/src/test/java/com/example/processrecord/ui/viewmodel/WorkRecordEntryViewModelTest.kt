@@ -3,6 +3,7 @@ package com.example.processrecord.ui.viewmodel
 import androidx.lifecycle.SavedStateHandle
 import com.example.processrecord.data.ProcessRepository
 import com.example.processrecord.data.StyleRepository
+import com.example.processrecord.data.WorkRecordInsertPayload
 import com.example.processrecord.data.WorkRecordRepository
 import com.example.processrecord.data.dao.StyleDao
 import com.example.processrecord.data.dao.StyleStat
@@ -67,54 +68,25 @@ class WorkRecordEntryViewModelTest {
 
     @Test
     @OptIn(ExperimentalCoroutinesApi::class)
-    fun init_withCopyFromId_keepsCopiedColorEntriesAndQuantities() = runTest {
+    fun init_withAppendToGroupId_keepsStyleAndStartsWithBlankProcessItem() = runTest {
         val sourceRecord = WorkRecord(
             id = 8L,
             processId = 5L,
             processName = "pack",
             style = "S-88",
+            entryGroupId = "group-1",
             unitPrice = 250L,
             quantity = 7L,
             amount = 1750L,
             remark = "done",
-            totalQuantity = 9L,
-            serialNumber = "SN-1",
-            color = "红2 蓝5",
             date = 1_700_000_000_000L,
-            startTime = 1_700_000_100_000L,
-            endTime = 1_700_000_200_000L,
             createTime = 1_700_000_300_000L
         )
         val fakeRepository = FakeWorkRecordRepository().apply {
             records += sourceRecord
-            seedColorItems(
-                recordId = sourceRecord.id,
-                items = listOf(
-                    WorkRecordColorItem(
-                        id = 1L,
-                        workRecordId = sourceRecord.id,
-                        colorName = "红",
-                        colorHex = "#FF0000",
-                        quantity = 2L,
-                        deficit = 1L,
-                        colorCode = "R1",
-                        sortOrder = 0
-                    ),
-                    WorkRecordColorItem(
-                        id = 2L,
-                        workRecordId = sourceRecord.id,
-                        colorName = "蓝",
-                        colorHex = "#0000FF",
-                        quantity = 5L,
-                        deficit = 0L,
-                        colorCode = "B5",
-                        sortOrder = 1
-                    )
-                )
-            )
         }
         val viewModel = WorkRecordEntryViewModel(
-            savedStateHandle = SavedStateHandle(mapOf("copyFromId" to sourceRecord.id.toString())),
+            savedStateHandle = SavedStateHandle(mapOf("appendToGroupId" to "group-1")),
             workRecordRepository = fakeRepository,
             processRepository = FakeProcessRepository(),
             styleRepository = StyleRepository(FakeStyleDao())
@@ -122,29 +94,226 @@ class WorkRecordEntryViewModelTest {
 
         advanceUntilIdle()
 
+        assertTrue(viewModel.isAppendToExistingGroupMode)
         val details = viewModel.workRecordUiState.workRecordDetails
-        assertEquals(0L, details.id)
-        assertEquals("pack", details.processName)
         assertEquals("S-88", details.style)
-        assertEquals("2.50", details.unitPrice)
-        assertEquals("7", details.quantity)
-        assertEquals("17.50", details.amount)
+        assertEquals("", details.processName)
+        assertEquals("", details.unitPrice)
+        assertEquals("", details.quantity)
         assertEquals("", details.remark)
-        assertEquals("", details.totalQuantity)
-        assertEquals("", details.serialNumber)
         assertEquals(0L, details.startTime)
         assertEquals(0L, details.endTime)
-        assertTrue(details.imagePaths.isEmpty())
-        assertEquals("红2 蓝5", details.color)
-        assertEquals(2, details.colorEntries.size)
-        assertEquals("红", details.colorEntries[0].colorName)
-        assertEquals("2", details.colorEntries[0].quantity)
-        assertEquals("1", details.colorEntries[0].deficit)
-        assertEquals("R1", details.colorEntries[0].colorCode)
-        assertEquals("蓝", details.colorEntries[1].colorName)
-        assertEquals("5", details.colorEntries[1].quantity)
-        assertEquals("B5", details.colorEntries[1].colorCode)
-        assertTrue(details.date > sourceRecord.date)
+        assertEquals("0.00", details.amount)
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun init_withAppendToGroupId_loadsExistingGroupItemsInCreateOrder() = runTest {
+        val firstRecord = WorkRecord(
+            id = 8L,
+            processId = 5L,
+            processName = "cut",
+            style = "S-88",
+            entryGroupId = "group-1",
+            unitPrice = 250L,
+            quantity = 7L,
+            amount = 1750L,
+            date = 1_700_000_000_000L,
+            createTime = 1_700_000_100_000L
+        )
+        val secondRecord = WorkRecord(
+            id = 9L,
+            processId = 6L,
+            processName = "pack",
+            style = "S-88",
+            entryGroupId = "group-1",
+            unitPrice = 300L,
+            quantity = 5L,
+            amount = 1500L,
+            date = 1_700_000_000_000L,
+            createTime = 1_700_000_200_000L
+        )
+        val fakeRepository = FakeWorkRecordRepository().apply {
+            records += secondRecord
+            records += firstRecord
+        }
+        val viewModel = WorkRecordEntryViewModel(
+            savedStateHandle = SavedStateHandle(mapOf("appendToGroupId" to "group-1")),
+            workRecordRepository = fakeRepository,
+            processRepository = FakeProcessRepository(),
+            styleRepository = StyleRepository(FakeStyleDao())
+        )
+
+        advanceUntilIdle()
+
+        val existingItems = viewModel.existingGroupUiState.items
+        assertEquals(2, existingItems.size)
+        assertEquals("cut", existingItems[0].processName)
+        assertEquals("pack", existingItems[1].processName)
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun init_withInitialRecordId_tracksExistingItemIndexForDirectEntry() = runTest {
+        val firstRecord = WorkRecord(
+            id = 8L,
+            processId = 5L,
+            processName = "cut",
+            style = "S-88",
+            entryGroupId = "group-1",
+            unitPrice = 250L,
+            quantity = 7L,
+            amount = 1750L,
+            date = 1_700_000_000_000L,
+            createTime = 1_700_000_100_000L
+        )
+        val secondRecord = WorkRecord(
+            id = 9L,
+            processId = 6L,
+            processName = "pack",
+            style = "S-88",
+            entryGroupId = "group-1",
+            unitPrice = 300L,
+            quantity = 5L,
+            amount = 1500L,
+            date = 1_700_000_000_000L,
+            createTime = 1_700_000_200_000L
+        )
+        val fakeRepository = FakeWorkRecordRepository().apply {
+            records += secondRecord
+            records += firstRecord
+        }
+        val viewModel = WorkRecordEntryViewModel(
+            savedStateHandle = SavedStateHandle(
+                mapOf(
+                    "appendToGroupId" to "group-1",
+                    "initialRecordId" to "9"
+                )
+            ),
+            workRecordRepository = fakeRepository,
+            processRepository = FakeProcessRepository(),
+            styleRepository = StyleRepository(FakeStyleDao())
+        )
+
+        advanceUntilIdle()
+
+        assertEquals(1, viewModel.initialExistingItemIndex)
+        assertEquals("pack", viewModel.existingGroupUiState.items[viewModel.initialExistingItemIndex ?: 0].processName)
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun init_withAppendToGroupId_usesFirstRecordSharedTotalQuantityAndImages() = runTest {
+        val firstRecord = WorkRecord(
+            id = 8L,
+            processId = 5L,
+            processName = "cut",
+            style = "S-88",
+            entryGroupId = "group-1",
+            unitPrice = 250L,
+            quantity = 7L,
+            amount = 1750L,
+            totalQuantity = 540L,
+            date = 1_700_000_000_000L,
+            createTime = 1_700_000_100_000L
+        )
+        val secondRecord = WorkRecord(
+            id = 9L,
+            processId = 6L,
+            processName = "pack",
+            style = "S-88",
+            entryGroupId = "group-1",
+            unitPrice = 300L,
+            quantity = 5L,
+            amount = 1500L,
+            totalQuantity = 520L,
+            date = 1_700_000_000_000L,
+            createTime = 1_700_000_200_000L
+        )
+        val fakeRepository = FakeWorkRecordRepository().apply {
+            records += secondRecord
+            records += firstRecord
+            seedImages(firstRecord.id, listOf("img-a.jpg"))
+            seedImages(secondRecord.id, listOf("img-b.jpg"))
+        }
+        val viewModel = WorkRecordEntryViewModel(
+            savedStateHandle = SavedStateHandle(mapOf("appendToGroupId" to "group-1")),
+            workRecordRepository = fakeRepository,
+            processRepository = FakeProcessRepository(),
+            styleRepository = StyleRepository(FakeStyleDao())
+        )
+
+        advanceUntilIdle()
+
+        assertEquals("540", viewModel.groupSharedDetails.totalQuantity)
+        assertEquals(listOf("img-a.jpg"), viewModel.groupSharedDetails.imagePaths)
+        assertEquals("540", viewModel.existingGroupUiState.items[1].totalQuantity)
+        assertEquals(listOf("img-a.jpg"), viewModel.existingGroupUiState.items[1].imagePaths)
+        assertEquals("540", viewModel.groupUiState.items.first().totalQuantity)
+        assertEquals(listOf("img-a.jpg"), viewModel.groupUiState.items.first().imagePaths)
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun updateSharedFields_syncsDraftAndExistingItems() = runTest {
+        val existingRecord = WorkRecord(
+            id = 8L,
+            processId = 5L,
+            processName = "cut",
+            style = "S-88",
+            entryGroupId = "group-1",
+            unitPrice = 250L,
+            quantity = 7L,
+            amount = 1750L,
+            totalQuantity = 100L,
+            date = 1_700_000_000_000L,
+            createTime = 1_700_000_100_000L
+        )
+        val fakeRepository = FakeWorkRecordRepository().apply {
+            records += existingRecord
+            seedImages(existingRecord.id, listOf("old.jpg"))
+        }
+        val viewModel = WorkRecordEntryViewModel(
+            savedStateHandle = SavedStateHandle(mapOf("appendToGroupId" to "group-1")),
+            workRecordRepository = fakeRepository,
+            processRepository = FakeProcessRepository(),
+            styleRepository = StyleRepository(FakeStyleDao())
+        )
+
+        advanceUntilIdle()
+        viewModel.updateSharedTotalQuantity("540")
+        viewModel.updateSharedImagePaths(listOf("shared.jpg"))
+
+        assertEquals("540", viewModel.groupUiState.items.first().totalQuantity)
+        assertEquals(listOf("shared.jpg"), viewModel.groupUiState.items.first().imagePaths)
+        assertEquals("540", viewModel.existingGroupUiState.items.first().totalQuantity)
+        assertEquals(listOf("shared.jpg"), viewModel.existingGroupUiState.items.first().imagePaths)
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun addProcessItem_copiesSharedFieldsToNewDraftItem() = runTest {
+        val viewModel = WorkRecordEntryViewModel(
+            savedStateHandle = SavedStateHandle(),
+            workRecordRepository = FakeWorkRecordRepository(),
+            processRepository = FakeProcessRepository(),
+            styleRepository = StyleRepository(FakeStyleDao())
+        )
+
+        advanceUntilIdle()
+
+        viewModel.updateGroupStyle("S-100")
+        viewModel.updateSharedTotalQuantity("540")
+        viewModel.updateSharedImagePaths(listOf("shared.jpg"))
+
+        viewModel.addProcessItem()
+
+        val draftItems = viewModel.groupUiState.items
+        assertEquals(2, draftItems.size)
+        assertEquals("S-100", draftItems.last().style)
+        assertEquals("540", draftItems.last().totalQuantity)
+        assertEquals(listOf("shared.jpg"), draftItems.last().imagePaths)
+        assertEquals("", draftItems.last().processName)
     }
 
     @Test
@@ -196,6 +365,85 @@ class WorkRecordEntryViewModelTest {
     }
 
     @Test
+    fun toggleColorEntryDeficitResolved_updatesUiStateAndClearsWhenDeficitBecomesBlank() {
+        val viewModel = createViewModel()
+        viewModel.updateUiState(
+            WorkRecordDetails(
+                processName = "process",
+                style = "style",
+                unitPrice = "1.50",
+                quantity = "2",
+                colorEntries = listOf(
+                    ColorEntryUi(
+                        colorName = "red",
+                        colorHex = "#FF0000",
+                        quantity = "2",
+                        deficit = "少1件"
+                    )
+                ),
+                date = 1L
+            )
+        )
+
+        viewModel.toggleColorEntryDeficitResolved("red")
+        assertEquals(
+            true,
+            viewModel.workRecordUiState.workRecordDetails.colorEntries.single().isDeficitResolved
+        )
+
+        viewModel.updateColorEntryDeficit("red", "")
+        val updatedEntry = viewModel.workRecordUiState.workRecordDetails.colorEntries.single()
+        assertEquals("", updatedEntry.deficit)
+        assertEquals(false, updatedEntry.isDeficitResolved)
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun init_withRecordId_restoresResolvedDeficitState() = runTest {
+        val record = WorkRecord(
+            id = 8L,
+            processId = null,
+            processName = "pack",
+            style = "S-88",
+            unitPrice = 250L,
+            quantity = 3L,
+            amount = 750L,
+            date = 1_700_000_000_000L,
+            createTime = 1_700_000_100_000L
+        )
+        val fakeRepository = FakeWorkRecordRepository().apply {
+            records += record
+            seedColorItems(
+                recordId = record.id,
+                items = listOf(
+                    WorkRecordColorItem(
+                        workRecordId = record.id,
+                        colorName = "Red",
+                        colorHex = "#FF0000",
+                        quantity = 3L,
+                        deficit = "少1件",
+                        isDeficitResolved = true,
+                        colorCode = "A1",
+                        sortOrder = 0
+                    )
+                )
+            )
+        }
+        val viewModel = WorkRecordEntryViewModel(
+            savedStateHandle = SavedStateHandle(mapOf("recordId" to "8")),
+            workRecordRepository = fakeRepository,
+            processRepository = FakeProcessRepository(),
+            styleRepository = StyleRepository(FakeStyleDao())
+        )
+
+        advanceUntilIdle()
+
+        val restoredEntry = viewModel.workRecordUiState.workRecordDetails.colorEntries.single()
+        assertEquals("少1件", restoredEntry.deficit)
+        assertEquals(true, restoredEntry.isDeficitResolved)
+    }
+
+    @Test
     fun saveWorkRecord_insertsRecordAndColorItems() = runBlocking {
         val fakeWorkRecordRepository = FakeWorkRecordRepository()
         val fakeProcessRepository = FakeProcessRepository()
@@ -219,7 +467,8 @@ class WorkRecordEntryViewModelTest {
                         colorName = "red",
                         colorHex = "#FF0000",
                         quantity = "3",
-                        deficit = "1",
+                        deficit = "少1件",
+                        isDeficitResolved = true,
                         colorCode = "A1"
                     )
                 ),
@@ -244,7 +493,8 @@ class WorkRecordEntryViewModelTest {
         assertEquals("red", savedColorItem.colorName)
         assertEquals("#FF0000", savedColorItem.colorHex)
         assertEquals(3L, savedColorItem.quantity)
-        assertEquals(1L, savedColorItem.deficit)
+        assertEquals("少1件", savedColorItem.deficit)
+        assertEquals(true, savedColorItem.isDeficitResolved)
         assertEquals("A1", savedColorItem.colorCode)
         assertEquals(0, savedColorItem.sortOrder)
 
@@ -330,12 +580,179 @@ class WorkRecordEntryViewModelTest {
     }
 
     @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun saveWorkRecord_inAppendMode_syncsSharedFieldsToExistingAndNewRecords() = runTest {
+        val existingRecord = WorkRecord(
+            id = 8L,
+            processId = 5L,
+            processName = "cut",
+            style = "S-88",
+            entryGroupId = "group-1",
+            unitPrice = 250L,
+            quantity = 7L,
+            amount = 1750L,
+            totalQuantity = 100L,
+            date = 1_700_000_000_000L,
+            createTime = 1_700_000_100_000L
+        )
+        val fakeRepository = FakeWorkRecordRepository().apply {
+            records += existingRecord
+            seedImages(existingRecord.id, listOf("old.jpg"))
+        }
+        val viewModel = WorkRecordEntryViewModel(
+            savedStateHandle = SavedStateHandle(mapOf("appendToGroupId" to "group-1")),
+            workRecordRepository = fakeRepository,
+            processRepository = FakeProcessRepository(),
+            styleRepository = StyleRepository(FakeStyleDao())
+        )
+
+        advanceUntilIdle()
+
+        viewModel.updateSharedTotalQuantity("540")
+        viewModel.updateSharedImagePaths(listOf("shared.jpg"))
+        viewModel.updateProcessItem(
+            0,
+            viewModel.groupUiState.items.first().copy(
+                processName = "pack",
+                style = "S-88",
+                unitPrice = "2.00",
+                quantity = "4",
+                date = 1_700_000_000_000L
+            )
+        )
+
+        val result = viewModel.saveWorkRecord()
+
+        assertTrue(result.isSuccess)
+        val updatedExisting = fakeRepository.records.first { it.id == 8L }
+        assertEquals(540L, updatedExisting.totalQuantity)
+        assertEquals(listOf("shared.jpg"), fakeRepository.getImagesForRecord(8L))
+
+        val inserted = fakeRepository.records.first { it.id != 8L }
+        assertEquals(540L, inserted.totalQuantity)
+        assertEquals(listOf("shared.jpg"), fakeRepository.getImagesForRecord(inserted.id))
+    }
+
+    @Test
     fun deleteRecord_returnsFailure_whenRecordIdMissing() = runBlocking {
         val viewModel = createViewModel()
 
         val result = viewModel.deleteRecord()
 
         assertTrue(result.isFailure)
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun saveExistingRecord_updatesExistingGroupItem() = runTest {
+        val sourceRecord = WorkRecord(
+            id = 8L,
+            processId = 5L,
+            processName = "pack",
+            style = "S-88",
+            entryGroupId = "group-1",
+            unitPrice = 250L,
+            quantity = 7L,
+            amount = 1750L,
+            date = 1_700_000_000_000L,
+            createTime = 1_700_000_300_000L
+        )
+        val fakeRepository = FakeWorkRecordRepository().apply {
+            records += sourceRecord
+        }
+        val viewModel = WorkRecordEntryViewModel(
+            savedStateHandle = SavedStateHandle(mapOf("appendToGroupId" to "group-1")),
+            workRecordRepository = fakeRepository,
+            processRepository = FakeProcessRepository(),
+            styleRepository = StyleRepository(FakeStyleDao())
+        )
+
+        advanceUntilIdle()
+
+        viewModel.updateExistingProcessItem(
+            0,
+            viewModel.existingGroupUiState.items.first().copy(
+                quantity = "9",
+                unitPrice = "3.50",
+                remark = "updated"
+            )
+        )
+
+        val result = viewModel.saveExistingRecord(0)
+
+        assertTrue(result.isSuccess)
+        val updatedRecord = fakeRepository.records.first { it.id == 8L }
+        assertEquals(9L, updatedRecord.quantity)
+        assertEquals(350L, updatedRecord.unitPrice)
+        assertEquals(3150L, updatedRecord.amount)
+        assertEquals("updated", updatedRecord.remark)
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun saveExistingRecord_syncsSharedFieldsAcrossPersistedGroup() = runTest {
+        val firstRecord = WorkRecord(
+            id = 8L,
+            processId = 5L,
+            processName = "pack",
+            style = "S-88",
+            entryGroupId = "group-1",
+            unitPrice = 250L,
+            quantity = 7L,
+            amount = 1750L,
+            totalQuantity = 100L,
+            date = 1_700_000_000_000L,
+            createTime = 1_700_000_300_000L
+        )
+        val secondRecord = WorkRecord(
+            id = 9L,
+            processId = 6L,
+            processName = "iron",
+            style = "S-88",
+            entryGroupId = "group-1",
+            unitPrice = 300L,
+            quantity = 5L,
+            amount = 1500L,
+            totalQuantity = 100L,
+            date = 1_700_000_000_000L,
+            createTime = 1_700_000_400_000L
+        )
+        val fakeRepository = FakeWorkRecordRepository().apply {
+            records += firstRecord
+            records += secondRecord
+            seedImages(firstRecord.id, listOf("old-a.jpg"))
+            seedImages(secondRecord.id, listOf("old-b.jpg"))
+        }
+        val viewModel = WorkRecordEntryViewModel(
+            savedStateHandle = SavedStateHandle(mapOf("appendToGroupId" to "group-1")),
+            workRecordRepository = fakeRepository,
+            processRepository = FakeProcessRepository(),
+            styleRepository = StyleRepository(FakeStyleDao())
+        )
+
+        advanceUntilIdle()
+        viewModel.updateSharedTotalQuantity("540")
+        viewModel.updateSharedImagePaths(listOf("shared.jpg"))
+        viewModel.updateExistingProcessItem(
+            0,
+            viewModel.existingGroupUiState.items.first().copy(
+                quantity = "9",
+                unitPrice = "3.50",
+                remark = "updated"
+            )
+        )
+
+        val result = viewModel.saveExistingRecord(0)
+
+        assertTrue(result.isSuccess)
+        val updatedFirst = fakeRepository.records.first { it.id == 8L }
+        val updatedSecond = fakeRepository.records.first { it.id == 9L }
+        assertEquals(9L, updatedFirst.quantity)
+        assertEquals(350L, updatedFirst.unitPrice)
+        assertEquals(540L, updatedFirst.totalQuantity)
+        assertEquals(540L, updatedSecond.totalQuantity)
+        assertEquals(listOf("shared.jpg"), fakeRepository.getImagesForRecord(8L))
+        assertEquals(listOf("shared.jpg"), fakeRepository.getImagesForRecord(9L))
     }
 
     @Test
@@ -542,6 +959,66 @@ class WorkRecordEntryViewModelTest {
     }
 
     @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun updateColorPreset_syncsSavedRecordColorItems() = runTest {
+        val fakeWorkRecordRepository = FakeWorkRecordRepository().apply {
+            records += WorkRecord(
+                id = 8L,
+                processId = 5L,
+                processName = "pack",
+                style = "S-88",
+                entryGroupId = "group-1",
+                unitPrice = 250L,
+                quantity = 7L,
+                amount = 1750L,
+                date = 1_700_000_000_000L,
+                createTime = 1_700_000_300_000L
+            )
+            seedColorPresets(
+                listOf(
+                    ColorPreset(id = 1L, name = "Red", hexValue = "#FF0000", groupId = 1L, sortOrder = 1)
+                )
+            )
+            seedColorItems(
+                recordId = 8L,
+                items = listOf(
+                    WorkRecordColorItem(
+                        workRecordId = 8L,
+                        colorName = "Red",
+                        colorHex = "#FF0000",
+                        quantity = 3L,
+                        deficit = "少1件",
+                        isDeficitResolved = true,
+                        colorCode = "A1",
+                        sortOrder = 0
+                    )
+                )
+            )
+        }
+        val viewModel = WorkRecordEntryViewModel(
+            savedStateHandle = SavedStateHandle(),
+            workRecordRepository = fakeWorkRecordRepository,
+            processRepository = FakeProcessRepository(),
+            styleRepository = StyleRepository(FakeStyleDao())
+        )
+        advanceUntilIdle()
+
+        val accepted = viewModel.updateColorPreset(
+            ColorPreset(id = 1L, name = "Wine Red", hexValue = "#AA0022", groupId = 1L, sortOrder = 1)
+        )
+        advanceUntilIdle()
+
+        assertEquals(true, accepted)
+        val updatedColorItem = fakeWorkRecordRepository.getColorItemsForRecord(8L).single()
+        assertEquals("Wine Red", updatedColorItem.colorName)
+        assertEquals("#AA0022", updatedColorItem.colorHex)
+        assertEquals(3L, updatedColorItem.quantity)
+        assertEquals("少1件", updatedColorItem.deficit)
+        assertEquals(true, updatedColorItem.isDeficitResolved)
+        assertEquals("A1", updatedColorItem.colorCode)
+    }
+
+    @Test
     fun addColorGroup_setsError_whenNameBlank() {
         val viewModel = createViewModel()
 
@@ -736,6 +1213,7 @@ private class FakeWorkRecordRepository : WorkRecordRepository {
     var lastInsertedRecord: WorkRecord? = null
     var lastInsertedImages: List<String> = emptyList()
     var lastInsertedColorItems: List<WorkRecordColorItem>? = null
+    private val imagesByRecordId = mutableMapOf<Long, List<String>>()
     private val colorItemsByRecordId = mutableMapOf<Long, List<WorkRecordColorItem>>()
 
     private val colorPresetsFlow = MutableStateFlow(emptyList<ColorPreset>())
@@ -753,6 +1231,9 @@ private class FakeWorkRecordRepository : WorkRecordRepository {
     override fun getRecordsByDateRangeStream(startDate: Long, endDate: Long): Flow<List<WorkRecord>> =
         flowOf(records.filter { it.date in startDate..endDate })
 
+    override fun getRecordsByGroupIdStream(entryGroupId: String): Flow<List<WorkRecord>> =
+        flowOf(records.filter { it.entryGroupId == entryGroupId })
+
     override fun getTotalAmountByDateStream(date: Long): Flow<Long?> =
         flowOf(records.filter { it.date == date }.sumOf { it.amount })
 
@@ -766,6 +1247,9 @@ private class FakeWorkRecordRepository : WorkRecordRepository {
     override fun getRecordDatesInMonthStream(monthStart: Long, monthEnd: Long): Flow<List<Long>> = flowOf(emptyList())
 
     override suspend fun getRecordStream(id: Long): WorkRecord? = records.firstOrNull { it.id == id }
+
+    override suspend fun getRecordsByGroupId(entryGroupId: String): List<WorkRecord> =
+        records.filter { it.entryGroupId == entryGroupId }
 
     override suspend fun getLatestRecord(): WorkRecord? =
         records.maxWithOrNull(compareBy<WorkRecord> { it.createTime }.thenBy { it.id })
@@ -781,7 +1265,22 @@ private class FakeWorkRecordRepository : WorkRecordRepository {
         lastInsertedImages = images
         lastInsertedColorItems = colorItems
         records += lastInsertedRecord!!
+        imagesByRecordId[newId] = images
+        colorItemsByRecordId[newId] = colorItems.mapIndexed { index, item ->
+            item.copy(workRecordId = newId, sortOrder = index)
+        }
         return newId
+    }
+
+    override suspend fun insertRecordGroupWithDetails(
+        entries: List<WorkRecordInsertPayload>
+    ): List<Long> {
+        val insertedIds = mutableListOf<Long>()
+        entries.forEach { entry ->
+            val newId = insertRecordWithDetails(entry.record, entry.images, entry.colorItems)
+            insertedIds += newId
+        }
+        return insertedIds
     }
 
     override suspend fun updateRecordWithDetails(
@@ -793,15 +1292,23 @@ private class FakeWorkRecordRepository : WorkRecordRepository {
         lastInsertedRecord = record
         lastInsertedImages = images
         lastInsertedColorItems = colorItems
+        imagesByRecordId[record.id] = images
+        colorItemsByRecordId[record.id] = colorItems.mapIndexed { index, item ->
+            item.copy(workRecordId = record.id, sortOrder = index)
+        }
     }
 
     override suspend fun deleteRecord(record: WorkRecord) {
         records.removeAll { it.id == record.id }
+        imagesByRecordId.remove(record.id)
+        colorItemsByRecordId.remove(record.id)
     }
 
-    override suspend fun getImagesForRecord(recordId: Long): List<String> = emptyList()
+    override suspend fun getImagesForRecord(recordId: Long): List<String> =
+        imagesByRecordId[recordId].orEmpty()
 
-    override suspend fun getImagesByRecordIds(recordIds: List<Long>): Map<Long, List<String>> = emptyMap()
+    override suspend fun getImagesByRecordIds(recordIds: List<Long>): Map<Long, List<String>> =
+        recordIds.associateWith { imagesByRecordId[it].orEmpty() }.filterValues { it.isNotEmpty() }
 
     override suspend fun getColorItemsForRecord(recordId: Long): List<WorkRecordColorItem> =
         colorItemsByRecordId[recordId].orEmpty()
@@ -821,8 +1328,23 @@ private class FakeWorkRecordRepository : WorkRecordRepository {
 
     override suspend fun updateColorPreset(preset: ColorPreset) {
         updateColorPresetCalls += 1
+        val previousPreset = colorPresetsFlow.value.firstOrNull { it.id == preset.id }
         colorPresetsFlow.value = colorPresetsFlow.value.map {
             if (it.id == preset.id) preset else it
+        }
+        previousPreset?.let { previous ->
+            colorItemsByRecordId.replaceAll { _, items ->
+                items.map { item ->
+                    if (item.colorName.equals(previous.name, ignoreCase = true)) {
+                        item.copy(
+                            colorName = preset.name,
+                            colorHex = preset.hexValue
+                        )
+                    } else {
+                        item
+                    }
+                }
+            }
         }
     }
 
@@ -858,5 +1380,9 @@ private class FakeWorkRecordRepository : WorkRecordRepository {
 
     fun seedColorItems(recordId: Long, items: List<WorkRecordColorItem>) {
         colorItemsByRecordId[recordId] = items
+    }
+
+    fun seedImages(recordId: Long, images: List<String>) {
+        imagesByRecordId[recordId] = images
     }
 }

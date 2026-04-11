@@ -390,6 +390,241 @@ class AppDatabaseMigrationTest {
         }
     }
 
+    @Test
+    fun migration16To17_backfillsEntryGroupIds_andCreatesIndex() {
+        val dbName = "migration-16-17-test.db"
+        val migration = AppDatabase.ALL_MIGRATIONS.first {
+            it.startVersion == 16 && it.endVersion == 17
+        }
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        context.deleteDatabase(dbName)
+
+        val opened = openDatabase(context, dbName, version = 16)
+        val db = opened.database
+        try {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS work_records (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    processId INTEGER,
+                    processName TEXT NOT NULL,
+                    style TEXT NOT NULL,
+                    unitPrice INTEGER NOT NULL,
+                    quantity INTEGER NOT NULL,
+                    amount INTEGER NOT NULL,
+                    startTime INTEGER NOT NULL DEFAULT 0,
+                    endTime INTEGER NOT NULL DEFAULT 0,
+                    remark TEXT NOT NULL DEFAULT '',
+                    totalQuantity INTEGER NOT NULL DEFAULT 0,
+                    serialNumber TEXT NOT NULL DEFAULT '',
+                    color TEXT NOT NULL DEFAULT '',
+                    date INTEGER NOT NULL,
+                    createTime INTEGER NOT NULL
+                )
+                """.trimIndent()
+            )
+            db.execSQL("INSERT INTO work_records (id, processName, style, unitPrice, quantity, amount, date, createTime) VALUES (1, 'Cut', 'S-001', 100, 1, 100, 1700000000000, 1700000000100)")
+            db.execSQL("INSERT INTO work_records (id, processName, style, unitPrice, quantity, amount, date, createTime) VALUES (2, 'Pack', 'S-001', 200, 2, 400, 1700000000000, 1700000000200)")
+
+            migration.migrate(db)
+
+            val entryGroupIds = mutableListOf<Pair<Long, String>>()
+            db.query("SELECT id, entryGroupId FROM work_records ORDER BY id ASC").use { cursor ->
+                while (cursor.moveToNext()) {
+                    entryGroupIds += cursor.getLong(0) to cursor.getString(1)
+                }
+            }
+            assertEquals(listOf(1L to "legacy_1", 2L to "legacy_2"), entryGroupIds)
+
+            var hasIndex = false
+            db.query("PRAGMA index_list('work_records')").use { cursor ->
+                while (cursor.moveToNext()) {
+                    val indexName = cursor.getString(1)
+                    if (indexName == "index_work_records_entryGroupId") {
+                        hasIndex = true
+                    }
+                }
+            }
+            assertTrue(hasIndex)
+        } finally {
+            opened.helper.close()
+            context.deleteDatabase(dbName)
+        }
+    }
+
+    @Test
+    fun migration17To18_convertsDeficitColumnToText_andPreservesValues() {
+        val dbName = "migration-17-18-test.db"
+        val migration = AppDatabase.ALL_MIGRATIONS.first {
+            it.startVersion == 17 && it.endVersion == 18
+        }
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        context.deleteDatabase(dbName)
+
+        val opened = openDatabase(context, dbName, version = 17)
+        val db = opened.database
+        try {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS work_records (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS work_record_color_items (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    workRecordId INTEGER NOT NULL,
+                    colorName TEXT NOT NULL,
+                    colorHex TEXT NOT NULL,
+                    quantity INTEGER NOT NULL,
+                    deficit INTEGER NOT NULL DEFAULT 0,
+                    colorCode TEXT NOT NULL DEFAULT '',
+                    sortOrder INTEGER NOT NULL DEFAULT 0,
+                    FOREIGN KEY(workRecordId) REFERENCES work_records(id) ON DELETE CASCADE
+                )
+                """.trimIndent()
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_work_record_color_items_workRecordId ON work_record_color_items(workRecordId)")
+            db.execSQL("INSERT INTO work_records (id) VALUES (1)")
+            db.execSQL(
+                """
+                INSERT INTO work_record_color_items
+                (id, workRecordId, colorName, colorHex, quantity, deficit, colorCode, sortOrder)
+                VALUES (1, 1, 'red', '#FF0000', 3, 12, 'A1', 0)
+                """.trimIndent()
+            )
+
+            migration.migrate(db)
+
+            var deficitColumnType: String? = null
+            db.query("PRAGMA table_info('work_record_color_items')").use { cursor ->
+                while (cursor.moveToNext()) {
+                    if (cursor.getString(1) == "deficit") {
+                        deficitColumnType = cursor.getString(2)
+                    }
+                }
+            }
+            assertEquals("TEXT", deficitColumnType)
+
+            val migratedRows = mutableListOf<Triple<Long, String, String>>()
+            db.query("SELECT id, deficit, colorCode FROM work_record_color_items ORDER BY id ASC").use { cursor ->
+                while (cursor.moveToNext()) {
+                    migratedRows += Triple(cursor.getLong(0), cursor.getString(1), cursor.getString(2))
+                }
+            }
+            assertEquals(listOf(Triple(1L, "12", "A1")), migratedRows)
+
+            db.execSQL(
+                """
+                INSERT INTO work_record_color_items
+                (id, workRecordId, colorName, colorHex, quantity, colorCode, sortOrder)
+                VALUES (2, 1, 'blue', '#0000FF', 5, 'B2', 1)
+                """.trimIndent()
+            )
+
+            val defaultDeficits = mutableListOf<Pair<Long, String>>()
+            db.query("SELECT id, deficit FROM work_record_color_items ORDER BY id ASC").use { cursor ->
+                while (cursor.moveToNext()) {
+                    defaultDeficits += cursor.getLong(0) to cursor.getString(1)
+                }
+            }
+            assertEquals(listOf(1L to "12", 2L to ""), defaultDeficits)
+        } finally {
+            opened.helper.close()
+            context.deleteDatabase(dbName)
+        }
+    }
+
+    @Test
+    fun migration18To19_addsResolvedFlag_andDefaultsLegacyRowsToUnresolved() {
+        val dbName = "migration-18-19-test.db"
+        val migration = AppDatabase.ALL_MIGRATIONS.first {
+            it.startVersion == 18 && it.endVersion == 19
+        }
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        context.deleteDatabase(dbName)
+
+        val opened = openDatabase(context, dbName, version = 18)
+        val db = opened.database
+        try {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS work_records (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS work_record_color_items (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    workRecordId INTEGER NOT NULL,
+                    colorName TEXT NOT NULL,
+                    colorHex TEXT NOT NULL,
+                    quantity INTEGER NOT NULL,
+                    deficit TEXT NOT NULL DEFAULT '',
+                    colorCode TEXT NOT NULL DEFAULT '',
+                    sortOrder INTEGER NOT NULL DEFAULT 0,
+                    FOREIGN KEY(workRecordId) REFERENCES work_records(id) ON DELETE CASCADE
+                )
+                """.trimIndent()
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_work_record_color_items_workRecordId ON work_record_color_items(workRecordId)")
+            db.execSQL("INSERT INTO work_records (id) VALUES (1)")
+            db.execSQL(
+                """
+                INSERT INTO work_record_color_items
+                (id, workRecordId, colorName, colorHex, quantity, deficit, colorCode, sortOrder)
+                VALUES (1, 1, 'red', '#FF0000', 3, '少1件', 'A1', 0)
+                """.trimIndent()
+            )
+
+            migration.migrate(db)
+
+            var resolvedColumnType: String? = null
+            var resolvedColumnDefault: String? = null
+            db.query("PRAGMA table_info('work_record_color_items')").use { cursor ->
+                while (cursor.moveToNext()) {
+                    if (cursor.getString(1) == "isDeficitResolved") {
+                        resolvedColumnType = cursor.getString(2)
+                        resolvedColumnDefault = cursor.getString(4)
+                    }
+                }
+            }
+            assertEquals("INTEGER", resolvedColumnType)
+            assertEquals("0", resolvedColumnDefault)
+
+            val migratedRows = mutableListOf<Triple<Long, String, Int>>()
+            db.query("SELECT id, deficit, isDeficitResolved FROM work_record_color_items ORDER BY id ASC").use { cursor ->
+                while (cursor.moveToNext()) {
+                    migratedRows += Triple(cursor.getLong(0), cursor.getString(1), cursor.getInt(2))
+                }
+            }
+            assertEquals(listOf(Triple(1L, "少1件", 0)), migratedRows)
+
+            db.execSQL(
+                """
+                INSERT INTO work_record_color_items
+                (id, workRecordId, colorName, colorHex, quantity, deficit, colorCode, sortOrder)
+                VALUES (2, 1, 'blue', '#0000FF', 5, '少2件', 'B2', 1)
+                """.trimIndent()
+            )
+
+            val defaultResolvedValues = mutableListOf<Pair<Long, Int>>()
+            db.query("SELECT id, isDeficitResolved FROM work_record_color_items ORDER BY id ASC").use { cursor ->
+                while (cursor.moveToNext()) {
+                    defaultResolvedValues += cursor.getLong(0) to cursor.getInt(1)
+                }
+            }
+            assertEquals(listOf(1L to 0, 2L to 0), defaultResolvedValues)
+        } finally {
+            opened.helper.close()
+            context.deleteDatabase(dbName)
+        }
+    }
+
     private fun openDatabase(context: Context, dbName: String, version: Int = 11): OpenedDatabase {
         val helper = FrameworkSQLiteOpenHelperFactory().create(
             SupportSQLiteOpenHelper.Configuration.builder(context)

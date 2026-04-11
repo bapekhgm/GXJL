@@ -1,6 +1,7 @@
 package com.example.processrecord.ui.viewmodel
 
 import com.example.processrecord.data.WorkRecordRepository
+import com.example.processrecord.data.WorkRecordInsertPayload
 import com.example.processrecord.data.dao.StyleStat
 import com.example.processrecord.data.entity.ColorGroup
 import com.example.processrecord.data.entity.ColorPreset
@@ -117,7 +118,7 @@ class WorkRecordStatsViewModelTest {
                     colorName = "red",
                     colorHex = "#FF0000",
                     quantity = 3L,
-                    deficit = 0L,
+                    deficit = "",
                     sortOrder = 0
                 )
             )
@@ -147,7 +148,7 @@ class WorkRecordStatsViewModelTest {
                     colorName = "blue",
                     colorHex = "#0000FF",
                     quantity = 7L,
-                    deficit = 0L,
+                    deficit = "",
                     sortOrder = 0
                 )
             )
@@ -163,12 +164,130 @@ class WorkRecordStatsViewModelTest {
         subscriptions.forEach(Job::cancel)
     }
 
+    @Test
+    fun monthlyStats_totalQuantityCountsEachStyleOnlyOnce() = runTest {
+        val duplicatedStyleEarly = testRecord(
+            id = 1L,
+            style = "A-100",
+            amount = 1000L,
+            quantity = 2L,
+            date = dayStart(2026, 2, 6)
+        ).copy(totalQuantity = 12L)
+        val duplicatedStyleLate = testRecord(
+            id = 2L,
+            style = "A-100",
+            amount = 1800L,
+            quantity = 3L,
+            date = dayStart(2026, 2, 18)
+        ).copy(totalQuantity = 12L)
+        val uniqueStyle = testRecord(
+            id = 3L,
+            style = "B-200",
+            amount = 900L,
+            quantity = 1L,
+            date = dayStart(2026, 2, 20)
+        ).copy(totalQuantity = 5L)
+        val repository = FakeStatsWorkRecordRepository(
+            records = listOf(duplicatedStyleEarly, duplicatedStyleLate, uniqueStyle)
+        )
+        val viewModel = WorkRecordStatsViewModel(repository)
+        val subscriptions = collectStateFlows(viewModel)
+
+        viewModel.updateSelectedDate(dayStart(2026, 2, 10))
+        advanceUntilIdle()
+
+        val currentMonthStats = viewModel.currentMonthStyleStats.value
+        assertEquals(listOf("A-100", "B-200"), currentMonthStats.map { it.style })
+        assertEquals(2800L, currentMonthStats.first { it.style == "A-100" }.totalAmount)
+        assertEquals(12L, currentMonthStats.first { it.style == "A-100" }.totalQuantity)
+        assertEquals(17L, currentMonthStats.sumOf { it.totalQuantity })
+
+        val februarySection = viewModel.monthlyStatsSections.value.single()
+        assertEquals(17L, februarySection.totalQuantity)
+        assertEquals(12L, februarySection.styleStats.first { it.style == "A-100" }.totalQuantity)
+
+        subscriptions.forEach(Job::cancel)
+    }
+
+    @Test
+    fun monthlyStatsSections_includeEveryMonthInDescendingOrder() = runTest {
+        val januaryPrimary = testRecord(
+            id = 1L,
+            style = "JAN-A",
+            amount = 2000L,
+            quantity = 4L,
+            date = dayStart(2026, 1, 12)
+        )
+        val januarySecondary = testRecord(
+            id = 2L,
+            style = "JAN-B",
+            amount = 1200L,
+            quantity = 3L,
+            date = dayStart(2026, 1, 20)
+        )
+        val februaryRecord = testRecord(
+            id = 3L,
+            style = "FEB-A",
+            amount = 3500L,
+            quantity = 7L,
+            date = dayStart(2026, 2, 8)
+        )
+        val repository = FakeStatsWorkRecordRepository(
+            records = listOf(januaryPrimary, januarySecondary, februaryRecord),
+            colorItems = listOf(
+                WorkRecordColorItem(
+                    id = 1L,
+                    workRecordId = 1L,
+                    colorName = "red",
+                    colorHex = "#FF0000",
+                    quantity = 4L,
+                    deficit = "",
+                    sortOrder = 0
+                ),
+                WorkRecordColorItem(
+                    id = 2L,
+                    workRecordId = 3L,
+                    colorName = "blue",
+                    colorHex = "#0000FF",
+                    quantity = 7L,
+                    deficit = "",
+                    sortOrder = 0
+                )
+            )
+        )
+        val viewModel = WorkRecordStatsViewModel(repository)
+        val subscriptions = collectStateFlows(viewModel)
+
+        advanceUntilIdle()
+
+        val sections = viewModel.monthlyStatsSections.value
+        assertEquals(listOf(2026 to 2, 2026 to 1), sections.map { it.year to it.month })
+
+        val februarySection = sections.first()
+        assertEquals(3500L, februarySection.totalAmount)
+        assertEquals(7L, februarySection.totalQuantity)
+        assertEquals(listOf("FEB-A"), februarySection.styleStats.map { it.style })
+        assertEquals(listOf(3L), februarySection.records.map { it.id })
+
+        val januarySection = sections.last()
+        assertEquals(3200L, januarySection.totalAmount)
+        assertEquals(7L, januarySection.totalQuantity)
+        assertEquals(listOf("JAN-A", "JAN-B"), januarySection.styleStats.map { it.style })
+        assertEquals(listOf(2L, 1L), januarySection.records.map { it.id })
+
+        assertEquals(setOf(1L, 3L), viewModel.monthlyStatsColorItemsMap.value.keys)
+
+        subscriptions.forEach(Job::cancel)
+    }
+
     private fun TestScope.collectStateFlows(viewModel: WorkRecordStatsViewModel): List<Job> {
         return listOf(
             backgroundScope.launch { viewModel.currentMonthTotalAmount.collect { } },
             backgroundScope.launch { viewModel.currentMonthRecords.collect { } },
             backgroundScope.launch { viewModel.currentMonthStyleStats.collect { } },
-            backgroundScope.launch { viewModel.currentMonthColorItemsMap.collect { } }
+            backgroundScope.launch { viewModel.currentMonthColorItemsMap.collect { } },
+            backgroundScope.launch { viewModel.monthlyStatsSections.collect { } },
+            backgroundScope.launch { viewModel.monthlyStatsColorItemsMap.collect { } }
         )
     }
 }
@@ -195,6 +314,11 @@ private class FakeStatsWorkRecordRepository(
             records.filter { it.date in startDate..endDate }
         }
 
+    override fun getRecordsByGroupIdStream(entryGroupId: String): Flow<List<WorkRecord>> =
+        recordsFlow.map { records ->
+            records.filter { it.entryGroupId == entryGroupId }
+        }
+
     override fun getTotalAmountByDateStream(date: Long): Flow<Long?> =
         getRecordsByDateStream(date).map { records -> records.sumOf { it.amount } }
 
@@ -219,6 +343,9 @@ private class FakeStatsWorkRecordRepository(
     override suspend fun getRecordStream(id: Long): WorkRecord? =
         recordsFlow.value.firstOrNull { it.id == id }
 
+    override suspend fun getRecordsByGroupId(entryGroupId: String): List<WorkRecord> =
+        recordsFlow.value.filter { it.entryGroupId == entryGroupId }
+
     override suspend fun getLatestRecord(): WorkRecord? = recordsFlow.value.maxByOrNull { it.createTime }
 
     override suspend fun insertRecordWithDetails(
@@ -226,6 +353,10 @@ private class FakeStatsWorkRecordRepository(
         images: List<String>,
         colorItems: List<WorkRecordColorItem>
     ): Long = error("Not needed in WorkRecordStatsViewModelTest")
+
+    override suspend fun insertRecordGroupWithDetails(
+        entries: List<WorkRecordInsertPayload>
+    ): List<Long> = error("Not needed in WorkRecordStatsViewModelTest")
 
     override suspend fun updateRecordWithDetails(
         record: WorkRecord,

@@ -214,17 +214,17 @@ private val LocalAnimationConfig = staticCompositionLocalOf { AnimationConfig() 
 
 data class ShapeConfig(
     // 小圆角 - 用于标签、小按钮
-    val small: RoundedCornerShape = RoundedCornerShape(12.dp),
+    val small: RoundedCornerShape = RoundedCornerShape(10.dp),
     // 中等圆角 - 用于输入框、小卡片
-    val medium: RoundedCornerShape = RoundedCornerShape(20.dp),
+    val medium: RoundedCornerShape = RoundedCornerShape(18.dp),
     // 大圆角 - 用于卡片
-    val large: RoundedCornerShape = RoundedCornerShape(28.dp),
+    val large: RoundedCornerShape = RoundedCornerShape(24.dp),
     // 超大圆角 - 用于主要卡片、模态框
-    val extraLarge: RoundedCornerShape = RoundedCornerShape(36.dp),
+    val extraLarge: RoundedCornerShape = RoundedCornerShape(30.dp),
     // 圆形 - 使用50%圆角
     val circle: RoundedCornerShape = RoundedCornerShape(50),
     // 底部圆角 - 用于底部弹窗
-    val bottomSheet: RoundedCornerShape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+    val bottomSheet: RoundedCornerShape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
     // 胶囊形状 - 用于按钮、标签
     val capsule: RoundedCornerShape = RoundedCornerShape(50)
 )
@@ -268,9 +268,9 @@ fun ProcessRecordTheme(
         MaterialTheme(
             colorScheme = colorScheme,
             shapes = Shapes(
-                small = RoundedCornerShape(12.dp),
-                medium = RoundedCornerShape(20.dp),
-                large = RoundedCornerShape(28.dp)
+                small = RoundedCornerShape(10.dp),
+                medium = RoundedCornerShape(18.dp),
+                large = RoundedCornerShape(24.dp)
             ),
             typography = Typography,
             content = content

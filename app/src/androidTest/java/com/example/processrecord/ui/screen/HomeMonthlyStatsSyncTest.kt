@@ -31,7 +31,7 @@ class HomeMonthlyStatsSyncTest {
     val composeRule = createAndroidComposeRule<MainActivity>()
 
     @Test
-    fun monthlyStats_followSelectedDateMonthOnOverview() {
+    fun monthlyOverview_followsSelectedMonth_and_monthlyStats_showAllMonths() {
         val suffix = System.currentTimeMillis()
         val processName = "MonthProc$suffix"
         val currentStyle = "Current$suffix"
@@ -39,10 +39,10 @@ class HomeMonthlyStatsSyncTest {
         val unitPrice = "2.50"
         val currentQuantity = "4"
         val previousQuantity = "7"
+        val previousAmount = "17.50"
 
         val currentMonthDayOneTag = calendarDayTag(monthOffset = 0, day = 1)
         val previousMonthDayOneTag = calendarDayTag(monthOffset = -1, day = 1)
-        val context = composeRule.activity
 
         composeRule.onNodeWithTag(HOME_ADD_RECORD_BUTTON_TEST_TAG)
             .assertIsDisplayed()
@@ -74,10 +74,19 @@ class HomeMonthlyStatsSyncTest {
         }
 
         selectOverviewDate(previousMonthDayOneTag, monthDelta = -1)
+        composeRule.onNodeWithTag(HOME_MONTH_OVERVIEW_TAB_TEST_TAG).performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithTag(HOME_MONTH_OVERVIEW_CARD_TEST_TAG)
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("¥$previousAmount").assertIsDisplayed()
+        composeRule.onAllNodesWithText(previousStyle).assertCountEquals(0)
+
         composeRule.onNodeWithTag(HOME_MONTH_STATS_TAB_TEST_TAG).performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodesWithText(previousStyle).fetchSemanticsNodes().isNotEmpty()
         }
+        composeRule.onAllNodesWithTag(HOME_MONTH_OVERVIEW_CARD_TEST_TAG).assertCountEquals(0)
 
         composeRule.onAllNodesWithText(currentStyle).assertCountEquals(0)
 
@@ -103,22 +112,41 @@ class HomeMonthlyStatsSyncTest {
         }
 
         selectOverviewDate(currentMonthDayOneTag, monthDelta = 1)
+        composeRule.onNodeWithTag(HOME_MONTH_OVERVIEW_TAB_TEST_TAG).performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithTag(HOME_MONTH_OVERVIEW_CARD_TEST_TAG)
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithText("¥$previousAmount").fetchSemanticsNodes().isEmpty()
+        }
+        composeRule.onNodeWithTag(HOME_MONTH_OVERVIEW_CARD_TEST_TAG).assertIsDisplayed()
+        composeRule.onAllNodesWithText(previousStyle).assertCountEquals(0)
+
         composeRule.onNodeWithTag(HOME_MONTH_STATS_TAB_TEST_TAG).performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodesWithText(currentStyle).fetchSemanticsNodes().isNotEmpty()
         }
 
-        composeRule.onAllNodesWithText(previousStyle).assertCountEquals(0)
+        composeRule.onNodeWithText(previousStyle).performScrollTo()
+        composeRule.onNodeWithText(previousStyle).assertIsDisplayed()
 
         composeRule.onNodeWithTag(HOME_DAILY_RECORDS_TAB_TEST_TAG).performClick()
         selectOverviewDate(previousMonthDayOneTag, monthDelta = -1)
+
+        composeRule.onNodeWithTag(HOME_MONTH_OVERVIEW_TAB_TEST_TAG).performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithText("¥$previousAmount").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("¥$previousAmount").assertIsDisplayed()
 
         composeRule.onNodeWithTag(HOME_MONTH_STATS_TAB_TEST_TAG).performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodesWithText(previousStyle).fetchSemanticsNodes().isNotEmpty()
         }
 
-        composeRule.onAllNodesWithText(currentStyle).assertCountEquals(0)
+        composeRule.onNodeWithText(currentStyle).performScrollTo()
+        composeRule.onNodeWithText(currentStyle).assertIsDisplayed()
     }
 
     private fun openAddProcessDialog() {

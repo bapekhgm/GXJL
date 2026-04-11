@@ -20,6 +20,15 @@ interface WorkRecordDao {
     @Query("SELECT * FROM work_records ORDER BY createTime DESC")
     fun getAllRecords(): Flow<List<WorkRecord>>
 
+    @Query(
+        """
+        SELECT * FROM work_records
+        WHERE entryGroupId = :entryGroupId
+        ORDER BY createTime ASC, id ASC
+        """
+    )
+    fun getRecordsByGroupId(entryGroupId: String): Flow<List<WorkRecord>>
+
     @Query("SELECT SUM(amount) FROM work_records WHERE date >= :startDate AND date <= :endDate")
     fun getTotalAmountByDateRange(startDate: Long, endDate: Long): Flow<Long?>
 
@@ -47,6 +56,15 @@ interface WorkRecordDao {
 
     @Query("SELECT * FROM work_records WHERE id = :id")
     suspend fun getRecordById(id: Long): WorkRecord?
+
+    @Query(
+        """
+        SELECT * FROM work_records
+        WHERE entryGroupId = :entryGroupId
+        ORDER BY createTime ASC, id ASC
+        """
+    )
+    suspend fun getRecordListByGroupId(entryGroupId: String): List<WorkRecord>
 
     @Query("SELECT * FROM work_records ORDER BY createTime DESC, id DESC LIMIT 1")
     suspend fun getLatestRecord(): WorkRecord?
@@ -98,6 +116,27 @@ interface WorkRecordDao {
     }
 
     /**
+     * Group insert transaction: write multiple records and each record's related assets atomically.
+     */
+    @Transaction
+    suspend fun insertRecordGroupWithDetails(entries: List<WorkRecordInsertEntry>): List<Long> {
+        val insertedIds = mutableListOf<Long>()
+        entries.forEach { entry ->
+            val recordId = insertRecord(entry.record)
+            if (entry.images.isNotEmpty()) {
+                insertImages(entry.images.map { it.copy(workRecordId = recordId) })
+            }
+            if (entry.colorItems.isNotEmpty()) {
+                insertColorItems(entry.colorItems.mapIndexed { index, item ->
+                    item.copy(id = 0, workRecordId = recordId, sortOrder = index)
+                })
+            }
+            insertedIds += recordId
+        }
+        return insertedIds
+    }
+
+    /**
      * 更新记录事务：原子性更新主记录 + 替换图片 + 替换颜色明细。
      * 先删除旧的关联数据，再插入新的，保证数据一致性。
      */
@@ -127,4 +166,10 @@ data class StyleStat(
     val style: String,
     val totalAmount: Long,
     val totalQuantity: Long
+)
+
+data class WorkRecordInsertEntry(
+    val record: WorkRecord,
+    val images: List<WorkRecordImage>,
+    val colorItems: List<WorkRecordColorItem>
 )

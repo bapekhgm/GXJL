@@ -10,6 +10,7 @@ import com.example.processrecord.data.ColorGroupNameConflictException
 import com.example.processrecord.data.ColorPresetNameConflictException
 import com.example.processrecord.data.ProcessRepository
 import com.example.processrecord.data.StyleRepository
+import com.example.processrecord.data.WorkRecordInsertPayload
 import com.example.processrecord.data.WorkRecordRepository
 import com.example.processrecord.data.entity.ColorGroup
 import com.example.processrecord.data.entity.ColorPreset
@@ -22,6 +23,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.Locale
+import java.util.UUID
 
 class ProcessOperationFailedException : IllegalStateException()
 class InvalidWorkRecordInputException : IllegalArgumentException()
@@ -73,11 +75,21 @@ data class WorkRecordUiState(
     val lastUsedDefaults: WorkRecordLastUsedDefaults? = null
 )
 
+data class WorkRecordGroupUiState(
+    val style: String = "",
+    val items: List<WorkRecordDetails> = listOf(WorkRecordDetails()),
+    val isEntryValid: Boolean = false,
+    val styleError: WorkRecordFieldError? = null,
+    val itemValidationErrors: List<WorkRecordValidationErrors> = emptyList(),
+    val hasRequestedValidation: Boolean = false
+)
+
 data class WorkRecordDetails(
     val id: Long = 0,
     val processId: Long? = null,
     val processName: String = "",
     val style: String = "",
+    val entryGroupId: String = "",
     val unitPrice: String = "",
     val quantity: String = "",
     val amount: String = "0.00",
@@ -89,7 +101,8 @@ data class WorkRecordDetails(
     val color: String = "",
     val colorEntries: List<ColorEntryUi> = emptyList(),
     val imagePaths: List<String> = emptyList(),
-    val date: Long = System.currentTimeMillis()
+    val date: Long = System.currentTimeMillis(),
+    val createTime: Long = System.currentTimeMillis()
 )
 
 data class ColorEntryUi(
@@ -97,7 +110,16 @@ data class ColorEntryUi(
     val colorHex: String,
     val quantity: String,
     val deficit: String = "",
+    val isDeficitResolved: Boolean = false,
     val colorCode: String = ""
+)
+
+data class ExistingWorkRecordGroupUiState(
+    val entryGroupId: String = "",
+    val items: List<WorkRecordDetails> = emptyList(),
+    val itemValidationErrors: List<WorkRecordValidationErrors> = emptyList(),
+    val hasRequestedValidation: Boolean = false,
+    val isLoading: Boolean = false
 )
 
 class WorkRecordEntryViewModel(
@@ -108,16 +130,45 @@ class WorkRecordEntryViewModel(
 ) : ViewModel() {
 
     private val recordId: Long? = savedStateHandle.get<String>("recordId")?.toLongOrNull()
-    private val copyFromId: Long? = savedStateHandle.get<String>("copyFromId")?.toLongOrNull()
+    private val appendToGroupId: String? = savedStateHandle.get<String>("appendToGroupId")
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+    private val initialRecordId: Long? = savedStateHandle.get<String>("initialRecordId")?.toLongOrNull()
+
+    private var loadedEntryGroupId: String? = null
+    private var persistedExistingGroupItems: List<WorkRecordDetails> = emptyList()
+    var initialExistingItemIndex by mutableStateOf<Int?>(null)
+        private set
+
+    var groupUiState by mutableStateOf(
+        WorkRecordGroupUiState(
+            items = listOf(emptyNewEntryDetails())
+        )
+    )
+        private set
 
     var workRecordUiState by mutableStateOf(WorkRecordUiState())
         private set
+
+    var existingGroupUiState by mutableStateOf(
+        ExistingWorkRecordGroupUiState(
+            entryGroupId = appendToGroupId.orEmpty(),
+            isLoading = appendToGroupId != null
+        )
+    )
+        private set
+
     var processOperationError by mutableStateOf<Throwable?>(null)
         private set
     var colorManageOperationError by mutableStateOf<Throwable?>(null)
         private set
     var colorManageOperationNotice by mutableStateOf<ColorManageOperationNotice?>(null)
         private set
+
+    val groupSharedDetails: WorkRecordDetails
+        get() = existingGroupUiState.items.firstOrNull()
+            ?: groupUiState.items.firstOrNull()
+            ?: WorkRecordDetails()
 
     val processList: StateFlow<List<Process>> =
         processRepository.getAllProcessesStream()
@@ -151,24 +202,80 @@ class WorkRecordEntryViewModel(
                 initialValue = emptyList()
             )
 
+    val isSingleRecordEditMode: Boolean
+        get() = recordId != null
+
+    val isAppendToExistingGroupMode: Boolean
+        get() = appendToGroupId != null && recordId == null
+
     init {
         when {
             recordId != null -> {
                 viewModelScope.launch {
-                    loadRecordDetails(sourceRecordId = recordId, asCopy = false)
+                    loadSingleRecord(sourceRecordId = recordId)
                 }
             }
 
-            copyFromId != null -> {
+            appendToGroupId != null -> {
                 viewModelScope.launch {
-                    loadRecordDetails(sourceRecordId = copyFromId, asCopy = true)
+                    loadAppendTargetGroup(appendToGroupId)
                 }
             }
+
+            else -> syncSingleUiState()
         }
     }
 
-    private suspend fun loadRecordDetails(sourceRecordId: Long, asCopy: Boolean) {
+    private suspend fun loadSingleRecord(sourceRecordId: Long) {
         val record = workRecordRepository.getRecordStream(sourceRecordId) ?: return
+        val details = buildRecordDetails(record)
+        loadedEntryGroupId = normalizeEntryGroupId(record)
+        persistedExistingGroupItems = emptyList()
+        initialExistingItemIndex = null
+        setGroupUiState(
+            style = details.style,
+            items = listOf(details),
+            hasRequestedValidation = false,
+            lastUsedDefaults = details.toLastUsedDefaults()
+        )
+    }
+
+    private suspend fun loadAppendTargetGroup(entryGroupId: String) {
+        val records = workRecordRepository.getRecordsByGroupId(entryGroupId)
+            .sortedWith(compareBy<WorkRecord> { it.createTime }.thenBy { it.id })
+        loadedEntryGroupId = entryGroupId
+        val style = records.firstOrNull()?.style.orEmpty()
+        val rawExistingItems = records.map { record ->
+            buildRecordDetails(record).copy(style = style)
+        }
+        val sharedFields = resolveSharedGroupFields(existingItems = rawExistingItems)
+        val existingItems = applySharedGroupFields(rawExistingItems, sharedFields)
+        persistedExistingGroupItems = existingItems
+        initialExistingItemIndex = initialRecordId
+            ?.let { targetRecordId ->
+                existingItems.indexOfFirst { it.id == targetRecordId }
+                    .takeIf { it >= 0 }
+            }
+        setGroupUiState(
+            style = style,
+            items = listOf(
+                applySharedGroupFields(
+                    emptyNewEntryDetails(style = style, date = sharedFields.date),
+                    sharedFields
+                )
+            ),
+            hasRequestedValidation = false,
+            lastUsedDefaults = null
+        )
+        setExistingGroupUiState(
+            items = existingItems,
+            entryGroupId = entryGroupId,
+            hasRequestedValidation = false,
+            isLoading = false
+        )
+    }
+
+    private suspend fun buildRecordDetails(record: WorkRecord): WorkRecordDetails {
         val images = workRecordRepository.getImagesForRecord(record.id)
         val colorItems = workRecordRepository.getColorItemsForRecord(record.id)
         val colorEntries = if (colorItems.isNotEmpty()) {
@@ -177,60 +284,120 @@ class WorkRecordEntryViewModel(
                     colorName = it.colorName,
                     colorHex = it.colorHex,
                     quantity = formatQuantity(it.quantity),
-                    deficit = formatQuantity(it.deficit),
+                    deficit = it.deficit,
+                    isDeficitResolved = it.isDeficitResolved,
                     colorCode = it.colorCode
-                )
+                ).normalizeDeficitState()
             }
         } else {
             parseLegacyColorEntries(record.color)
         }
 
-        val details = if (asCopy) {
-            record.toWorkRecordDetails().copy(
-                id = 0,
-                remark = "",
-                totalQuantity = "",
-                serialNumber = "",
-                colorEntries = colorEntries,
-                date = System.currentTimeMillis(),
-                startTime = 0,
-                endTime = 0,
-                imagePaths = emptyList()
-            )
-        } else {
-            record.toWorkRecordDetails().copy(
-                imagePaths = images,
-                colorEntries = colorEntries
-            )
-        }
-
-        setWorkRecordUiState(
-            recordDetails = details,
-            lastUsedDefaults = details.toLastUsedDefaults(),
-            hasRequestedValidation = false
+        return record.toWorkRecordDetails().copy(
+            colorEntries = colorEntries,
+            imagePaths = images
         )
+    }
 
-        if (colorEntries.isNotEmpty()) {
-            onColorEntriesChanged(colorEntries)
+    fun updateGroupStyle(style: String) {
+        setGroupUiState(style = style, items = groupUiState.items)
+        if (isAppendToExistingGroupMode) {
+            setExistingGroupUiState(
+                items = existingGroupUiState.items,
+                entryGroupId = loadedEntryGroupId ?: existingGroupUiState.entryGroupId
+            )
         }
     }
 
     fun updateUiState(recordDetails: WorkRecordDetails) {
-        setWorkRecordUiState(recordDetails = recordDetails)
+        updateProcessItem(0, recordDetails)
+    }
+
+    fun updateProcessItem(index: Int, recordDetails: WorkRecordDetails) {
+        if (index !in groupUiState.items.indices) return
+        val updatedStyle = if (index == 0 && recordDetails.style != groupUiState.style) {
+            recordDetails.style
+        } else {
+            groupUiState.style
+        }
+        val updatedItems = groupUiState.items.toMutableList()
+        updatedItems[index] = recordDetails.copy(style = updatedStyle)
+        setGroupUiState(style = updatedStyle, items = updatedItems)
+    }
+
+    fun updateExistingProcessItem(index: Int, recordDetails: WorkRecordDetails) {
+        if (index !in existingGroupUiState.items.indices) return
+        val updatedItems = existingGroupUiState.items.toMutableList()
+        updatedItems[index] = recordDetails.copy(style = groupUiState.style)
+        setExistingGroupUiState(items = updatedItems)
+    }
+
+    fun addProcessItem() {
+        if (isSingleRecordEditMode) return
+        val sharedFields = currentSharedGroupFields()
+        setGroupUiState(
+            style = groupUiState.style,
+            items = groupUiState.items + applySharedGroupFields(
+                emptyNewEntryDetails(
+                    style = groupUiState.style,
+                    date = sharedFields.date
+                ),
+                sharedFields
+            )
+        )
+    }
+
+    fun removeProcessItem(index: Int) {
+        if (index !in groupUiState.items.indices) return
+        if (groupUiState.items.size <= 1) return
+        val updatedItems = groupUiState.items.toMutableList().also { it.removeAt(index) }
+        setGroupUiState(style = groupUiState.style, items = updatedItems)
     }
 
     fun onProcessSelected(process: Process) {
-        val currentDetails = workRecordUiState.workRecordDetails
+        onProcessSelected(0, process)
+    }
+
+    fun onProcessSelected(index: Int, process: Process) {
+        val currentDetails = groupUiState.items.getOrNull(index) ?: return
         val newDetails = currentDetails.copy(
             processId = process.id,
             processName = process.name,
             unitPrice = process.defaultPrice.toString()
         )
-        updateUiState(newDetails)
+        updateProcessItem(index, newDetails)
+    }
+
+    fun onExistingProcessSelected(index: Int, process: Process) {
+        val currentDetails = existingGroupUiState.items.getOrNull(index) ?: return
+        val newDetails = currentDetails.copy(
+            processId = process.id,
+            processName = process.name,
+            unitPrice = process.defaultPrice.toString()
+        )
+        updateExistingProcessItem(index, newDetails)
     }
 
     fun onStyleSelected(styleName: String) {
-        updateUiState(workRecordUiState.workRecordDetails.copy(style = styleName))
+        updateGroupStyle(styleName)
+    }
+
+    fun updateSharedDate(date: Long) {
+        if (date <= 0L) return
+        setGroupUiState(
+            style = groupUiState.style,
+            items = groupUiState.items.map { it.copy(date = date) }
+        )
+    }
+
+    fun updateSharedTotalQuantity(totalQuantity: String) {
+        val filtered = totalQuantity.filter(Char::isDigit)
+        if (filtered.isNotEmpty() && filtered.toLongOrNull() == null) return
+        applySharedFieldsToGroupState(currentSharedGroupFields().copy(totalQuantity = filtered))
+    }
+
+    fun updateSharedImagePaths(imagePaths: List<String>) {
+        applySharedFieldsToGroupState(currentSharedGroupFields().copy(imagePaths = imagePaths))
     }
 
     fun consumeProcessOperationError() {
@@ -246,39 +413,147 @@ class WorkRecordEntryViewModel(
     }
 
     fun addColorEntryFromPreset(colorName: String, colorHex: String) {
-        val existing = workRecordUiState.workRecordDetails.colorEntries
-        if (existing.any { it.colorName == colorName }) return
+        addColorEntryFromPreset(0, colorName, colorHex)
+    }
+
+    fun addColorEntryFromPreset(index: Int, colorName: String, colorHex: String) {
+        val current = groupUiState.items.getOrNull(index) ?: return
+        if (current.colorEntries.any { it.colorName == colorName }) return
         onColorEntriesChanged(
-            existing + ColorEntryUi(colorName = colorName, colorHex = colorHex, quantity = "")
+            index = index,
+            entries = current.colorEntries + ColorEntryUi(
+                colorName = colorName,
+                colorHex = colorHex,
+                quantity = ""
+            )
+        )
+    }
+
+    fun addColorEntryFromExistingPreset(index: Int, colorName: String, colorHex: String) {
+        val current = existingGroupUiState.items.getOrNull(index) ?: return
+        if (current.colorEntries.any { it.colorName == colorName }) return
+        onExistingColorEntriesChanged(
+            index = index,
+            entries = current.colorEntries + ColorEntryUi(
+                colorName = colorName,
+                colorHex = colorHex,
+                quantity = ""
+            )
         )
     }
 
     fun updateColorEntryQuantity(colorName: String, quantity: String) {
-        val updated = workRecordUiState.workRecordDetails.colorEntries.map {
-            if (it.colorName == colorName) it.copy(quantity = quantity) else it
-        }
-        onColorEntriesChanged(updated)
+        updateColorEntryQuantity(0, colorName, quantity)
+    }
+
+    fun updateColorEntryQuantity(index: Int, colorName: String, quantity: String) {
+        updateColorEntry(index, colorName) { it.copy(quantity = quantity) }
+    }
+
+    fun updateExistingColorEntryQuantity(index: Int, colorName: String, quantity: String) {
+        updateExistingColorEntry(index, colorName) { it.copy(quantity = quantity) }
     }
 
     fun updateColorEntryDeficit(colorName: String, deficit: String) {
-        val updated = workRecordUiState.workRecordDetails.colorEntries.map {
-            if (it.colorName == colorName) it.copy(deficit = deficit) else it
+        updateColorEntryDeficit(0, colorName, deficit)
+    }
+
+    fun updateColorEntryDeficit(index: Int, colorName: String, deficit: String) {
+        updateColorEntry(index, colorName) {
+            it.copy(
+                deficit = deficit,
+                isDeficitResolved = it.isDeficitResolved && deficit.trim().isNotBlank()
+            )
         }
-        onColorEntriesChanged(updated)
+    }
+
+    fun updateExistingColorEntryDeficit(index: Int, colorName: String, deficit: String) {
+        updateExistingColorEntry(index, colorName) {
+            it.copy(
+                deficit = deficit,
+                isDeficitResolved = it.isDeficitResolved && deficit.trim().isNotBlank()
+            )
+        }
+    }
+
+    fun toggleColorEntryDeficitResolved(colorName: String) {
+        toggleColorEntryDeficitResolved(0, colorName)
+    }
+
+    fun toggleColorEntryDeficitResolved(index: Int, colorName: String) {
+        updateColorEntry(index, colorName) { entry ->
+            if (entry.deficit.trim().isBlank()) {
+                entry.copy(isDeficitResolved = false)
+            } else {
+                entry.copy(isDeficitResolved = !entry.isDeficitResolved)
+            }
+        }
+    }
+
+    fun toggleExistingColorEntryDeficitResolved(index: Int, colorName: String) {
+        updateExistingColorEntry(index, colorName) { entry ->
+            if (entry.deficit.trim().isBlank()) {
+                entry.copy(isDeficitResolved = false)
+            } else {
+                entry.copy(isDeficitResolved = !entry.isDeficitResolved)
+            }
+        }
     }
 
     fun updateColorEntryColorCode(colorName: String, colorCode: String) {
-        val updated = workRecordUiState.workRecordDetails.colorEntries.map {
-            if (it.colorName == colorName) it.copy(colorCode = colorCode) else it
-        }
-        onColorEntriesChanged(updated)
+        updateColorEntryColorCode(0, colorName, colorCode)
+    }
+
+    fun updateColorEntryColorCode(index: Int, colorName: String, colorCode: String) {
+        updateColorEntry(index, colorName) { it.copy(colorCode = colorCode) }
+    }
+
+    fun updateExistingColorEntryColorCode(index: Int, colorName: String, colorCode: String) {
+        updateExistingColorEntry(index, colorName) { it.copy(colorCode = colorCode) }
     }
 
     fun removeColorEntry(colorName: String) {
-        val updated = workRecordUiState.workRecordDetails.colorEntries.filterNot {
-            it.colorName == colorName
+        removeColorEntry(0, colorName)
+    }
+
+    fun removeColorEntry(index: Int, colorName: String) {
+        val current = groupUiState.items.getOrNull(index) ?: return
+        onColorEntriesChanged(
+            index = index,
+            entries = current.colorEntries.filterNot { it.colorName == colorName }
+        )
+    }
+
+    fun removeExistingColorEntry(index: Int, colorName: String) {
+        val current = existingGroupUiState.items.getOrNull(index) ?: return
+        onExistingColorEntriesChanged(
+            index = index,
+            entries = current.colorEntries.filterNot { it.colorName == colorName }
+        )
+    }
+
+    private fun updateColorEntry(
+        index: Int,
+        colorName: String,
+        transform: (ColorEntryUi) -> ColorEntryUi
+    ) {
+        val current = groupUiState.items.getOrNull(index) ?: return
+        val updated = current.colorEntries.map {
+            if (it.colorName == colorName) transform(it) else it
         }
-        onColorEntriesChanged(updated)
+        onColorEntriesChanged(index, updated)
+    }
+
+    private fun updateExistingColorEntry(
+        index: Int,
+        colorName: String,
+        transform: (ColorEntryUi) -> ColorEntryUi
+    ) {
+        val current = existingGroupUiState.items.getOrNull(index) ?: return
+        val updated = current.colorEntries.map {
+            if (it.colorName == colorName) transform(it) else it
+        }
+        onExistingColorEntriesChanged(index, updated)
     }
 
     fun addCustomColorPreset(name: String, hexValue: String, groupId: Long): Boolean {
@@ -412,24 +687,53 @@ class WorkRecordEntryViewModel(
     }
 
     fun onColorEntriesChanged(entries: List<ColorEntryUi>) {
-        val hasAnyQuantity = entries.any {
+        onColorEntriesChanged(0, entries)
+    }
+
+    fun onColorEntriesChanged(index: Int, entries: List<ColorEntryUi>) {
+        val normalizedEntries = entries.map(ColorEntryUi::normalizeDeficitState)
+        val current = groupUiState.items.getOrNull(index) ?: return
+        val hasAnyQuantity = normalizedEntries.any {
             it.quantity.toLongOrNull() != null && it.quantity.isNotBlank()
         }
-        val colorSummary = buildColorSummary(entries)
+        val colorSummary = buildColorSummary(normalizedEntries)
         val newDetails = if (hasAnyQuantity) {
-            val totalQuantity = entries.sumOf { it.quantity.toLongOrNull() ?: 0L }
-            workRecordUiState.workRecordDetails.copy(
-                colorEntries = entries,
+            val totalQuantity = normalizedEntries.sumOf { it.quantity.toLongOrNull() ?: 0L }
+            current.copy(
+                colorEntries = normalizedEntries,
                 color = colorSummary,
                 quantity = totalQuantity.toString()
             )
         } else {
-            workRecordUiState.workRecordDetails.copy(
-                colorEntries = entries,
+            current.copy(
+                colorEntries = normalizedEntries,
                 color = colorSummary
             )
         }
-        updateUiState(newDetails)
+        updateProcessItem(index, newDetails)
+    }
+
+    fun onExistingColorEntriesChanged(index: Int, entries: List<ColorEntryUi>) {
+        val normalizedEntries = entries.map(ColorEntryUi::normalizeDeficitState)
+        val current = existingGroupUiState.items.getOrNull(index) ?: return
+        val hasAnyQuantity = normalizedEntries.any {
+            it.quantity.toLongOrNull() != null && it.quantity.isNotBlank()
+        }
+        val colorSummary = buildColorSummary(normalizedEntries)
+        val newDetails = if (hasAnyQuantity) {
+            val totalQuantity = normalizedEntries.sumOf { it.quantity.toLongOrNull() ?: 0L }
+            current.copy(
+                colorEntries = normalizedEntries,
+                color = colorSummary,
+                quantity = totalQuantity.toString()
+            )
+        } else {
+            current.copy(
+                colorEntries = normalizedEntries,
+                color = colorSummary
+            )
+        }
+        updateExistingProcessItem(index, newDetails)
     }
 
     fun deleteStyle(styleName: String) {
@@ -439,6 +743,10 @@ class WorkRecordEntryViewModel(
     }
 
     fun addProcess(name: String, defaultPrice: Double, unit: String) {
+        addProcess(0, name, defaultPrice, unit)
+    }
+
+    fun addProcess(index: Int, name: String, defaultPrice: Double, unit: String) {
         val trimmedName = name.trim()
         val trimmedUnit = unit.trim()
         if (!isValidProcessInput(trimmedName, defaultPrice, trimmedUnit)) {
@@ -485,7 +793,61 @@ class WorkRecordEntryViewModel(
                         reactivated
                     }
                 }
-                onProcessSelected(selected)
+                onProcessSelected(index, selected)
+            }.onFailure {
+                processOperationError = it
+            }
+        }
+    }
+
+    fun addProcessToExisting(index: Int, name: String, defaultPrice: Double, unit: String) {
+        val trimmedName = name.trim()
+        val trimmedUnit = unit.trim()
+        if (!isValidProcessInput(trimmedName, defaultPrice, trimmedUnit)) {
+            processOperationError = InvalidProcessInputException()
+            return
+        }
+        viewModelScope.launch {
+            runCatching {
+                val existing = processRepository.getProcessByName(trimmedName)
+                val selected = when {
+                    existing == null -> {
+                        val insertedId = processRepository.insertProcess(
+                            Process(
+                                name = trimmedName,
+                                defaultPrice = defaultPrice,
+                                unit = trimmedUnit,
+                                isActive = true
+                            )
+                        )
+                        if (insertedId <= 0L) {
+                            processRepository.getProcessByName(trimmedName)
+                                ?: throw ProcessOperationFailedException()
+                        } else {
+                            Process(
+                                id = insertedId,
+                                name = trimmedName,
+                                defaultPrice = defaultPrice,
+                                unit = trimmedUnit,
+                                isActive = true
+                            )
+                        }
+                    }
+
+                    existing.isActive -> existing
+
+                    else -> {
+                        val reactivated = existing.copy(
+                            name = trimmedName,
+                            defaultPrice = defaultPrice,
+                            unit = trimmedUnit,
+                            isActive = true
+                        )
+                        processRepository.updateProcess(reactivated)
+                        reactivated
+                    }
+                }
+                onExistingProcessSelected(index, selected)
             }.onFailure {
                 processOperationError = it
             }
@@ -512,14 +874,28 @@ class WorkRecordEntryViewModel(
                     isActive = true
                 )
                 processRepository.updateProcess(normalized)
-                if (workRecordUiState.workRecordDetails.processId == normalized.id) {
-                    updateUiState(
-                        workRecordUiState.workRecordDetails.copy(
+                val updatedItems = groupUiState.items.map { item ->
+                    if (item.processId == normalized.id) {
+                        item.copy(
                             processName = normalized.name,
                             unitPrice = normalized.defaultPrice.toString()
                         )
-                    )
+                    } else {
+                        item
+                    }
                 }
+                val updatedExistingItems = existingGroupUiState.items.map { item ->
+                    if (item.processId == normalized.id) {
+                        item.copy(
+                            processName = normalized.name,
+                            unitPrice = normalized.defaultPrice.toString()
+                        )
+                    } else {
+                        item
+                    }
+                }
+                setGroupUiState(style = groupUiState.style, items = updatedItems)
+                setExistingGroupUiState(items = updatedExistingItems)
             }.onFailure {
                 processOperationError = it
             }
@@ -530,15 +906,30 @@ class WorkRecordEntryViewModel(
         viewModelScope.launch {
             runCatching {
                 processRepository.deleteProcess(process)
-                if (workRecordUiState.workRecordDetails.processId == process.id) {
-                    updateUiState(
-                        workRecordUiState.workRecordDetails.copy(
+                val updatedItems = groupUiState.items.map { item ->
+                    if (item.processId == process.id) {
+                        item.copy(
                             processId = null,
                             processName = "",
                             unitPrice = ""
                         )
-                    )
+                    } else {
+                        item
+                    }
                 }
+                val updatedExistingItems = existingGroupUiState.items.map { item ->
+                    if (item.processId == process.id) {
+                        item.copy(
+                            processId = null,
+                            processName = "",
+                            unitPrice = ""
+                        )
+                    } else {
+                        item
+                    }
+                }
+                setGroupUiState(style = groupUiState.style, items = updatedItems)
+                setExistingGroupUiState(items = updatedExistingItems)
             }.onFailure {
                 processOperationError = it
             }
@@ -558,11 +949,123 @@ class WorkRecordEntryViewModel(
     }
 
     suspend fun saveWorkRecord(): Result<Unit> {
-        val currentDetails = workRecordUiState.workRecordDetails
-        return persistRecord(currentDetails) { savedDefaults ->
-            setWorkRecordUiState(
-                recordDetails = emptyNewEntryDetails(date = currentDetails.date),
-                lastUsedDefaults = savedDefaults,
+        setGroupUiState(
+            style = groupUiState.style,
+            items = groupUiState.items,
+            hasRequestedValidation = true
+        )
+        val normalizedStyle = groupUiState.style.trim()
+        val sharedFields = currentSharedGroupFields()
+        val normalizedItems = applySharedGroupFields(groupUiState.items, sharedFields).map {
+            recomputeAmount(it.copy(style = normalizedStyle))
+        }
+        if (!validateGroup(normalizedStyle, normalizedItems)) {
+            return Result.failure(InvalidWorkRecordInputException())
+        }
+
+        return runCatching {
+            ensureStyleExists(normalizedStyle)
+
+            if (recordId != null) {
+                val item = normalizedItems.first()
+                val entryGroupId = loadedEntryGroupId ?: "legacy_$recordId"
+                workRecordRepository.updateRecordWithDetails(
+                    record = item.toWorkRecord().copy(
+                        id = recordId,
+                        entryGroupId = entryGroupId
+                    ),
+                    images = item.imagePaths,
+                    colorItems = buildColorItems(item)
+                )
+                item.toLastUsedDefaults()
+            } else {
+                val groupId = loadedEntryGroupId ?: UUID.randomUUID().toString()
+                val baseCreateTime = System.currentTimeMillis()
+                val payloads = normalizedItems.mapIndexed { index, item ->
+                    WorkRecordInsertPayload(
+                        record = item.copy(
+                            id = 0,
+                            style = normalizedStyle,
+                            createTime = baseCreateTime + index
+                        ).toWorkRecord().copy(entryGroupId = groupId),
+                        images = item.imagePaths,
+                        colorItems = buildColorItems(item)
+                    )
+                }
+                syncPersistedExistingGroupSharedFields(
+                    style = normalizedStyle,
+                    sharedFields = sharedFields
+                )
+                workRecordRepository.insertRecordGroupWithDetails(payloads)
+                normalizedItems.first().toLastUsedDefaults().copy(style = normalizedStyle)
+            }
+        }.map { savedDefaults ->
+            if (recordId == null) {
+                val resetDate = normalizedItems.firstOrNull()?.date ?: System.currentTimeMillis()
+                setGroupUiState(
+                    style = "",
+                    items = listOf(emptyNewEntryDetails(date = resetDate)),
+                    hasRequestedValidation = false,
+                    lastUsedDefaults = savedDefaults
+                )
+            } else {
+                setGroupUiState(
+                    style = normalizedStyle,
+                    items = normalizedItems,
+                    hasRequestedValidation = false,
+                    lastUsedDefaults = savedDefaults
+                )
+            }
+        }
+    }
+
+    suspend fun saveExistingRecord(index: Int): Result<Unit> {
+        if (index !in existingGroupUiState.items.indices) {
+            return Result.failure(WorkRecordNotFoundException())
+        }
+        val sharedFields = currentSharedGroupFields()
+        val synchronizedExistingItems = applySharedGroupFields(existingGroupUiState.items, sharedFields)
+        setExistingGroupUiState(
+            items = synchronizedExistingItems,
+            entryGroupId = loadedEntryGroupId ?: existingGroupUiState.entryGroupId,
+            hasRequestedValidation = true
+        )
+
+        val normalizedStyle = groupUiState.style.trim()
+        val currentItem = synchronizedExistingItems.getOrNull(index)
+            ?.copy(style = normalizedStyle)
+            ?.let(::recomputeAmount)
+            ?: return Result.failure(WorkRecordNotFoundException())
+
+        if (!validateInput(currentItem)) {
+            return Result.failure(InvalidWorkRecordInputException())
+        }
+
+        return runCatching {
+            ensureStyleExists(normalizedStyle)
+            val entryGroupId = loadedEntryGroupId ?: "legacy_${currentItem.id}"
+            workRecordRepository.updateRecordWithDetails(
+                record = currentItem.toWorkRecord().copy(
+                    id = currentItem.id,
+                    entryGroupId = entryGroupId
+                ),
+                images = currentItem.imagePaths,
+                colorItems = buildColorItems(currentItem)
+            )
+            syncPersistedExistingGroupSharedFields(
+                style = normalizedStyle,
+                sharedFields = sharedFields,
+                skipRecordId = currentItem.id
+            )
+        }.map {
+            val updatedItems = synchronizedExistingItems.toMutableList()
+            updatedItems[index] = currentItem
+            persistedExistingGroupItems = persistedExistingGroupItems
+                .map { applySharedGroupFields(it, sharedFields).copy(style = normalizedStyle) }
+                .map { item -> if (item.id == currentItem.id) currentItem else item }
+            setExistingGroupUiState(
+                items = updatedItems,
+                entryGroupId = loadedEntryGroupId ?: existingGroupUiState.entryGroupId,
                 hasRequestedValidation = false
             )
         }
@@ -570,101 +1073,215 @@ class WorkRecordEntryViewModel(
 
     suspend fun deleteRecord(): Result<Unit> {
         val targetRecordId = recordId ?: return Result.failure(WorkRecordNotFoundException())
+        val current = groupUiState.items.firstOrNull() ?: return Result.failure(WorkRecordNotFoundException())
         return runCatching {
+            val entryGroupId = loadedEntryGroupId ?: "legacy_$targetRecordId"
             workRecordRepository.deleteRecord(
-                workRecordUiState.workRecordDetails.toWorkRecord().copy(id = targetRecordId)
+                current.copy(style = groupUiState.style).toWorkRecord().copy(
+                    id = targetRecordId,
+                    entryGroupId = entryGroupId
+                )
             )
         }
     }
 
-    private suspend fun persistRecord(
-        currentDetails: WorkRecordDetails,
-        onSuccess: (WorkRecordLastUsedDefaults) -> Unit
-    ): Result<Unit> {
-        setWorkRecordUiState(
-            recordDetails = currentDetails,
-            hasRequestedValidation = true
-        )
-        if (!validateInput(currentDetails)) {
-            return Result.failure(InvalidWorkRecordInputException())
-        }
-
-        return runCatching {
-            val normalizedStyle = currentDetails.style.trim()
-            val normalizedDetails = currentDetails.copy(style = normalizedStyle)
-            val record = normalizedDetails.toWorkRecord()
-            val images = normalizedDetails.imagePaths
-            val colorItems = normalizedDetails.colorEntries.mapIndexed { index, entry ->
-                WorkRecordColorItem(
-                    workRecordId = 0,
-                    colorName = entry.colorName,
-                    colorHex = normalizeHex(entry.colorHex),
-                    quantity = entry.quantity.toLongOrNull() ?: 0L,
-                    deficit = entry.deficit.toLongOrNull() ?: 0L,
-                    colorCode = entry.colorCode,
-                    sortOrder = index
+    fun deleteExistingGroupRecord(index: Int) {
+        if (index !in existingGroupUiState.items.indices) return
+        val currentItems = existingGroupUiState.items
+        val target = currentItems[index]
+        viewModelScope.launch {
+            workRecordRepository.deleteRecord(
+                target.copy(style = groupUiState.style).toWorkRecord().copy(
+                    id = target.id,
+                    entryGroupId = loadedEntryGroupId ?: "legacy_${target.id}"
                 )
-            }
-
-            if (normalizedStyle.isNotBlank()) {
-                val existingStyle = styleRepository.getStyleByName(normalizedStyle)
-                if (existingStyle == null) {
-                    styleRepository.insertStyle(Style(name = normalizedStyle))
-                }
-            }
-
-            if (recordId != null) {
-                workRecordRepository.updateRecordWithDetails(
-                    record = record.copy(id = recordId),
-                    images = images,
-                    colorItems = colorItems
-                )
-            } else {
-                workRecordRepository.insertRecordWithDetails(
-                    record = record,
-                    images = images,
-                    colorItems = colorItems
-                )
-            }
-
-            normalizedDetails.toLastUsedDefaults()
-        }.map { savedDefaults ->
-            onSuccess(savedDefaults)
+            )
+            val updatedItems = currentItems.toMutableList().also { it.removeAt(index) }
+            persistedExistingGroupItems = persistedExistingGroupItems.filterNot { it.id == target.id }
+            setExistingGroupUiState(
+                items = updatedItems,
+                entryGroupId = loadedEntryGroupId ?: existingGroupUiState.entryGroupId,
+                hasRequestedValidation = false
+            )
         }
     }
 
-    private fun setWorkRecordUiState(
-        recordDetails: WorkRecordDetails,
-        lastUsedDefaults: WorkRecordLastUsedDefaults? = workRecordUiState.lastUsedDefaults,
-        hasRequestedValidation: Boolean = workRecordUiState.hasRequestedValidation
+    private suspend fun syncPersistedExistingGroupSharedFields(
+        style: String,
+        sharedFields: WorkRecordDetails,
+        skipRecordId: Long? = null
     ) {
-        val quantity = recordDetails.quantity.toLongOrNull() ?: 0L
-        val unitPriceCents = yuanToCents(recordDetails.unitPrice)
-        val amountCents = quantity * unitPriceCents
-        val amountYuan = amountCents / 100.0
-        val normalizedDetails = recordDetails.copy(
-            amount = String.format(Locale.getDefault(), "%.2f", amountYuan)
-        )
+        if (persistedExistingGroupItems.isEmpty()) return
+        val normalizedEntryGroupId = loadedEntryGroupId ?: existingGroupUiState.entryGroupId
+        persistedExistingGroupItems
+            .filterNot { it.id == skipRecordId }
+            .map { applySharedGroupFields(it, sharedFields).copy(style = style) }
+            .forEach { item ->
+                val entryGroupId = normalizedEntryGroupId.ifBlank { "legacy_${item.id}" }
+                workRecordRepository.updateRecordWithDetails(
+                    record = item.toWorkRecord().copy(
+                        id = item.id,
+                        entryGroupId = entryGroupId
+                    ),
+                    images = item.imagePaths,
+                    colorItems = buildColorItems(item)
+                )
+            }
+        persistedExistingGroupItems = persistedExistingGroupItems
+            .map { applySharedGroupFields(it, sharedFields).copy(style = style) }
+    }
 
-        workRecordUiState = WorkRecordUiState(
-            workRecordDetails = normalizedDetails,
-            isEntryValid = validateInput(normalizedDetails),
-            validationErrors = if (hasRequestedValidation) {
-                buildValidationErrors(normalizedDetails)
-            } else {
-                WorkRecordValidationErrors()
-            },
+    private suspend fun ensureStyleExists(styleName: String) {
+        if (styleName.isBlank()) return
+        val existingStyle = styleRepository.getStyleByName(styleName)
+        if (existingStyle == null) {
+            styleRepository.insertStyle(Style(name = styleName))
+        }
+    }
+
+    private fun buildColorItems(item: WorkRecordDetails): List<WorkRecordColorItem> {
+        return item.colorEntries.mapIndexed { index, entry ->
+            val normalizedDeficit = entry.deficit.trim()
+            WorkRecordColorItem(
+                workRecordId = 0,
+                colorName = entry.colorName,
+                colorHex = normalizeHex(entry.colorHex),
+                quantity = entry.quantity.toLongOrNull() ?: 0L,
+                deficit = normalizedDeficit,
+                isDeficitResolved = normalizedDeficit.isNotBlank() && entry.isDeficitResolved,
+                colorCode = entry.colorCode,
+                sortOrder = index
+            )
+        }
+    }
+
+    private fun validateGroup(style: String, items: List<WorkRecordDetails>): Boolean {
+        return style.isNotBlank() &&
+            items.isNotEmpty() &&
+            items.all { validateInput(it.copy(style = style)) }
+    }
+
+    private fun currentSharedGroupFields(): WorkRecordDetails {
+        return existingGroupUiState.items.firstOrNull()
+            ?: groupUiState.items.firstOrNull()
+            ?: emptyNewEntryDetails(style = groupUiState.style)
+    }
+
+    private fun resolveSharedGroupFields(
+        existingItems: List<WorkRecordDetails> = existingGroupUiState.items,
+        draftItems: List<WorkRecordDetails> = groupUiState.items
+    ): WorkRecordDetails {
+        return existingItems.firstOrNull()
+            ?: draftItems.firstOrNull()
+            ?: emptyNewEntryDetails(style = groupUiState.style)
+    }
+
+    private fun applySharedGroupFields(
+        item: WorkRecordDetails,
+        sharedFields: WorkRecordDetails
+    ): WorkRecordDetails {
+        return item.copy(
+            totalQuantity = sharedFields.totalQuantity,
+            imagePaths = sharedFields.imagePaths
+        )
+    }
+
+    private fun applySharedGroupFields(
+        items: List<WorkRecordDetails>,
+        sharedFields: WorkRecordDetails
+    ): List<WorkRecordDetails> {
+        return items.map { applySharedGroupFields(it, sharedFields) }
+    }
+
+    private fun applySharedFieldsToGroupState(sharedFields: WorkRecordDetails) {
+        setGroupUiState(
+            style = groupUiState.style,
+            items = applySharedGroupFields(groupUiState.items, sharedFields)
+        )
+        if (isAppendToExistingGroupMode) {
+            setExistingGroupUiState(
+                items = applySharedGroupFields(existingGroupUiState.items, sharedFields),
+                entryGroupId = loadedEntryGroupId ?: existingGroupUiState.entryGroupId
+            )
+        }
+    }
+
+    private fun setGroupUiState(
+        style: String,
+        items: List<WorkRecordDetails>,
+        hasRequestedValidation: Boolean = groupUiState.hasRequestedValidation,
+        lastUsedDefaults: WorkRecordLastUsedDefaults? = workRecordUiState.lastUsedDefaults
+    ) {
+        val normalizedStyle = style
+        val normalizedItems = items.ifEmpty {
+            listOf(emptyNewEntryDetails(style = normalizedStyle))
+        }.map {
+            recomputeAmount(it.copy(style = normalizedStyle))
+        }
+
+        val itemErrors = if (hasRequestedValidation) {
+            normalizedItems.map(::buildValidationErrors)
+        } else {
+            List(normalizedItems.size) { WorkRecordValidationErrors() }
+        }
+        val styleError = itemErrors.firstOrNull()?.style
+        val isEntryValid = validateGroup(normalizedStyle, normalizedItems)
+
+        groupUiState = WorkRecordGroupUiState(
+            style = normalizedStyle,
+            items = normalizedItems,
+            isEntryValid = isEntryValid,
+            styleError = styleError,
+            itemValidationErrors = itemErrors,
+            hasRequestedValidation = hasRequestedValidation
+        )
+        syncSingleUiState(lastUsedDefaults)
+    }
+
+    private fun setExistingGroupUiState(
+        items: List<WorkRecordDetails>,
+        entryGroupId: String = existingGroupUiState.entryGroupId,
+        hasRequestedValidation: Boolean = existingGroupUiState.hasRequestedValidation,
+        isLoading: Boolean = existingGroupUiState.isLoading
+    ) {
+        val normalizedStyle = groupUiState.style
+        val normalizedItems = items.map {
+            recomputeAmount(it.copy(style = normalizedStyle))
+        }
+        val itemErrors = if (hasRequestedValidation) {
+            normalizedItems.map(::buildValidationErrors)
+        } else {
+            List(normalizedItems.size) { WorkRecordValidationErrors() }
+        }
+        existingGroupUiState = ExistingWorkRecordGroupUiState(
+            entryGroupId = entryGroupId,
+            items = normalizedItems,
+            itemValidationErrors = itemErrors,
             hasRequestedValidation = hasRequestedValidation,
+            isLoading = isLoading
+        )
+    }
+
+    private fun syncSingleUiState(
+        lastUsedDefaults: WorkRecordLastUsedDefaults? = workRecordUiState.lastUsedDefaults
+    ) {
+        val firstItem = groupUiState.items.firstOrNull() ?: emptyNewEntryDetails(style = groupUiState.style)
+        val firstErrors = groupUiState.itemValidationErrors.firstOrNull() ?: WorkRecordValidationErrors()
+        workRecordUiState = WorkRecordUiState(
+            workRecordDetails = firstItem.copy(style = groupUiState.style),
+            isEntryValid = groupUiState.isEntryValid,
+            validationErrors = firstErrors.copy(style = groupUiState.styleError),
+            hasRequestedValidation = groupUiState.hasRequestedValidation,
             lastUsedDefaults = lastUsedDefaults
         )
     }
 
-    private fun validateInput(uiState: WorkRecordDetails = workRecordUiState.workRecordDetails): Boolean {
+    private fun validateInput(uiState: WorkRecordDetails): Boolean {
         return with(uiState) {
             val quantityValue = quantity.toLongOrNull()
             val unitPriceValue = normalizeDecimalInput(unitPrice).toDoubleOrNull()
-            style.isNotBlank() &&
-                processName.isNotBlank() &&
+            style.trim().isNotBlank() &&
+                processName.trim().isNotBlank() &&
                 quantityValue != null &&
                 quantityValue > 0L &&
                 unitPriceValue != null &&
@@ -700,6 +1317,16 @@ class WorkRecordEntryViewModel(
         )
     }
 
+    private fun recomputeAmount(details: WorkRecordDetails): WorkRecordDetails {
+        val quantity = details.quantity.toLongOrNull() ?: 0L
+        val unitPriceCents = yuanToCents(details.unitPrice)
+        val amountCents = quantity * unitPriceCents
+        val amountYuan = amountCents / 100.0
+        return details.copy(
+            amount = String.format(Locale.getDefault(), "%.2f", amountYuan)
+        )
+    }
+
     private fun isValidProcessInput(name: String, defaultPrice: Double, unit: String): Boolean {
         return name.isNotBlank() &&
             unit.isNotBlank() &&
@@ -721,6 +1348,10 @@ class WorkRecordEntryViewModel(
             else -> ColorOperationFailedException()
         }
     }
+
+    private fun normalizeEntryGroupId(record: WorkRecord): String {
+        return record.entryGroupId.ifBlank { "legacy_${record.id}" }
+    }
 }
 
 private fun WorkRecordDetails.toLastUsedDefaults(): WorkRecordLastUsedDefaults {
@@ -733,11 +1364,24 @@ private fun WorkRecordDetails.toLastUsedDefaults(): WorkRecordLastUsedDefaults {
 }
 
 private fun emptyNewEntryDetails(
+    style: String = "",
     date: Long = System.currentTimeMillis()
 ): WorkRecordDetails {
+    val normalizedDate = if (date > 0L) date else System.currentTimeMillis()
+    val now = System.currentTimeMillis()
     return WorkRecordDetails(
-        date = if (date > 0L) date else System.currentTimeMillis()
+        style = style,
+        date = normalizedDate,
+        createTime = now
     )
+}
+
+private fun ColorEntryUi.normalizeDeficitState(): ColorEntryUi {
+    return if (deficit.trim().isBlank() && isDeficitResolved) {
+        copy(isDeficitResolved = false)
+    } else {
+        this
+    }
 }
 
 private fun formatQuantity(value: Long): String {

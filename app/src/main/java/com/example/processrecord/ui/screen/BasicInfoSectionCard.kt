@@ -103,8 +103,11 @@ fun BasicInfoSectionCard(
             content()
         }
     } else {
-        SectionCard(modifier = modifier) {
-            SectionHeader(title = stringResource(R.string.work_record_section_basic_info)) {
+        SectionCard(modifier = modifier, emphasized = true) {
+            SectionHeader(
+                title = stringResource(R.string.work_record_section_basic_info),
+                emphasized = true
+            ) {
                 Icon(
                     imageVector = Icons.Default.DateRange,
                     contentDescription = null,

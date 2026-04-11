@@ -24,7 +24,8 @@ data class WorkRecordColorItem(
     val colorName: String,
     val colorHex: String,
     val quantity: Long,
-    val deficit: Long,
+    val deficit: String = "",
+    val isDeficitResolved: Boolean = false,
     val colorCode: String = "",
     val sortOrder: Int = 0
 )

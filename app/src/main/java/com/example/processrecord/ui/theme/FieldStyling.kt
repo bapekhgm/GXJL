@@ -18,9 +18,9 @@ import androidx.compose.ui.unit.dp
 // 表单字段形状配置
 // ───────────────────────────────────────────────────────────
 
-val AppTextFieldShape = RoundedCornerShape(22.dp)
-val AppSmallTextFieldShape = RoundedCornerShape(16.dp)
-val AppLargeTextFieldShape = RoundedCornerShape(28.dp)
+val AppTextFieldShape = RoundedCornerShape(18.dp)
+val AppSmallTextFieldShape = RoundedCornerShape(14.dp)
+val AppLargeTextFieldShape = RoundedCornerShape(24.dp)
 
 // ───────────────────────────────────────────────────────────
 // 输入框颜色配置
@@ -28,18 +28,18 @@ val AppLargeTextFieldShape = RoundedCornerShape(28.dp)
 
 @Composable
 fun appOutlinedTextFieldColors() = OutlinedTextFieldDefaults.colors(
-    focusedContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
-    unfocusedContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+    focusedContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+    unfocusedContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.76f),
     disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
     errorContainerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.22f),
     
-    focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f),
-    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.85f),
+    focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.72f),
+    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f),
     disabledBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
     errorBorderColor = MaterialTheme.colorScheme.error,
     
-    focusedLabelColor = MaterialTheme.colorScheme.primary,
-    unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+    focusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.9f),
+    unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.82f),
     disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
     errorLabelColor = MaterialTheme.colorScheme.error,
     
@@ -47,21 +47,21 @@ fun appOutlinedTextFieldColors() = OutlinedTextFieldDefaults.colors(
     unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
     disabledTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
     
-    focusedLeadingIconColor = MaterialTheme.colorScheme.primary,
-    unfocusedLeadingIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-    focusedTrailingIconColor = MaterialTheme.colorScheme.primary,
-    unfocusedTrailingIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+    focusedLeadingIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.88f),
+    unfocusedLeadingIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
+    focusedTrailingIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.88f),
+    unfocusedTrailingIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
     errorLeadingIconColor = MaterialTheme.colorScheme.error,
     errorTrailingIconColor = MaterialTheme.colorScheme.error,
     
     cursorColor = MaterialTheme.colorScheme.primary,
     errorCursorColor = MaterialTheme.colorScheme.error,
     
-    focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-    unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+    focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.46f),
+    unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
     
-    focusedSupportingTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-    unfocusedSupportingTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+    focusedSupportingTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.82f),
+    unfocusedSupportingTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f),
     errorSupportingTextColor = MaterialTheme.colorScheme.error
 )
 
