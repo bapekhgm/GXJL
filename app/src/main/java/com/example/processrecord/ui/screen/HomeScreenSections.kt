@@ -44,7 +44,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import com.example.processrecord.R
-import com.example.processrecord.ui.component.AppActionChip
 import com.example.processrecord.ui.theme.LargeAmountTextStyle
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -68,30 +67,30 @@ fun IncomeSummaryCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .padding(horizontal = 16.dp, vertical = 6.dp)
             .clickable(
                 interactionSource = interactionSource,
                 indication = null
             ) { onToggleVisible() },
-        shape = RoundedCornerShape(28.dp),
+        shape = RoundedCornerShape(24.dp),
         border = BorderStroke(
             1.dp,
             if (isPressed) {
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
             } else {
-                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
             }
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f)
+            containerColor = MaterialTheme.colorScheme.surface
         )
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
-                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.22f)
+                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.28f)
                 )
                 .padding(horizontal = 18.dp, vertical = 16.dp)
         ) {
@@ -225,14 +224,14 @@ fun HomeRecordStatsTabRow(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f))
+            .clip(RoundedCornerShape(18.dp))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.74f))
             .border(
                 width = 1.dp,
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
-                shape = RoundedCornerShape(20.dp)
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f),
+                shape = RoundedCornerShape(18.dp)
             )
-            .padding(4.dp),
+            .padding(3.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         HomeOverviewTabChip(
@@ -251,6 +250,14 @@ fun HomeRecordStatsTabRow(
                 .weight(1f)
                 .testTag(HOME_MONTH_STATS_TAB_TEST_TAG)
         )
+        HomeOverviewTabChip(
+            selected = selectedTab == 2,
+            onClick = { onTabSelected(2) },
+            text = stringResource(R.string.home_tab_month_overview),
+            modifier = Modifier
+                .weight(1f)
+                .testTag(HOME_MONTH_OVERVIEW_TAB_TEST_TAG)
+        )
     }
 }
 
@@ -263,7 +270,7 @@ private fun RowScope.HomeOverviewTabChip(
 ) {
     val backgroundColor by animateColorAsState(
         targetValue = if (selected) {
-            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.95f)
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f)
         } else {
             Color.Transparent
         },
@@ -275,7 +282,7 @@ private fun RowScope.HomeOverviewTabChip(
         targetValue = if (selected) {
             MaterialTheme.colorScheme.primary
         } else {
-            MaterialTheme.colorScheme.onSurfaceVariant
+            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.82f)
         },
         animationSpec = tween(200),
         label = "tabContent"
@@ -286,7 +293,7 @@ private fun RowScope.HomeOverviewTabChip(
             .clip(RoundedCornerShape(16.dp))
             .background(backgroundColor)
             .clickable(onClick = onClick)
-            .padding(vertical = 10.dp),
+            .padding(vertical = 9.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
@@ -318,15 +325,15 @@ fun DailyRecordDateSelector(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
-            .clip(RoundedCornerShape(22.dp))
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f))
+            .padding(horizontal = 16.dp, vertical = 2.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.74f))
             .border(
                 width = 1.dp,
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
-                shape = RoundedCornerShape(22.dp)
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.24f),
+                shape = RoundedCornerShape(18.dp)
             )
-            .padding(horizontal = 6.dp, vertical = 4.dp),
+            .padding(horizontal = 4.dp, vertical = 3.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -344,14 +351,12 @@ fun DailyRecordDateSelector(
             contentAlignment = Alignment.Center
         ) {
             Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                AppActionChip(
+                SelectedDateChip(
                     text = selectedDateText,
                     onClick = onDateClick,
-                    icon = Icons.Default.DateRange,
-                    emphasized = true,
                     modifier = Modifier.testTag(HOME_SELECTED_DATE_CHIP_TEST_TAG)
                 )
                 if (!isTodaySelected) {
@@ -373,6 +378,40 @@ fun DailyRecordDateSelector(
 }
 
 @Composable
+private fun SelectedDateChip(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f))
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                shape = RoundedCornerShape(14.dp)
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = Icons.Default.DateRange,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(16.dp)
+        )
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = MaterialTheme.colorScheme.primary
+        )
+    }
+}
+
+@Composable
 private fun CompactDateAssistChip(
     text: String,
     onClick: () -> Unit
@@ -380,7 +419,12 @@ private fun CompactDateAssistChip(
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(14.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f))
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.24f),
+                shape = RoundedCornerShape(14.dp)
+            )
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.Center,
@@ -405,9 +449,9 @@ private fun DateNavigationButton(
     
     val backgroundColor by animateColorAsState(
         targetValue = if (isPressed) {
-            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.28f)
         } else {
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+            MaterialTheme.colorScheme.surface.copy(alpha = 0.08f)
         },
         animationSpec = tween(150),
         label = "buttonBackground"
@@ -415,9 +459,14 @@ private fun DateNavigationButton(
 
     Box(
         modifier = Modifier
-            .size(42.dp)
+            .size(38.dp)
             .clip(CircleShape)
             .background(backgroundColor)
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.22f),
+                shape = CircleShape
+            )
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
@@ -429,7 +478,7 @@ private fun DateNavigationButton(
             imageVector = icon,
             contentDescription = contentDescription,
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(16.dp)
+            modifier = Modifier.size(15.dp)
         )
     }
 }

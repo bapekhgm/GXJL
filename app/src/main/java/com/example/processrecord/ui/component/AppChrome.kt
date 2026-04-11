@@ -103,16 +103,16 @@ fun AppTopBar(
     TopAppBar(
         modifier = modifier,
         title = {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold)
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
                 )
                 if (!subtitle.isNullOrBlank()) {
                     Text(
                         text = subtitle,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.82f)
                     )
                 }
             }
@@ -161,12 +161,12 @@ fun ChromeIconButton(
         modifier = modifier
             .scale(animatedScale)
             .minimumInteractiveComponentSize()
-            .size(44.dp)
+            .size(42.dp)
             .clip(shape)
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.96f))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.94f))
             .border(
                 width = 1.dp,
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f),
                 shape = shape
             )
             .clickable(
@@ -180,7 +180,7 @@ fun ChromeIconButton(
             imageVector = icon,
             contentDescription = contentDescription,
             tint = tint,
-            modifier = Modifier.size(20.dp)
+            modifier = Modifier.size(18.dp)
         )
     }
 }

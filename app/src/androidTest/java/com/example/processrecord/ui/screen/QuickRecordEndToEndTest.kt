@@ -98,8 +98,12 @@ class RecordEntryEndToEndTest {
             composeRule.onAllNodesWithText(styleName, substring = true)
                 .fetchSemanticsNodes().size >= 2
         )
-        composeRule.onNodeWithText("¥$firstAmount").assertIsDisplayed()
-        composeRule.onNodeWithText("¥$secondAmount").assertIsDisplayed()
+        assertTrue(
+            composeRule.onAllNodesWithText("¥$firstAmount").fetchSemanticsNodes().isNotEmpty()
+        )
+        assertTrue(
+            composeRule.onAllNodesWithText("¥$secondAmount").fetchSemanticsNodes().isNotEmpty()
+        )
 
         composeRule.onNodeWithText(context.getString(R.string.home_tab_month_stats)).performClick()
 

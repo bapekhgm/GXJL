@@ -27,6 +27,9 @@ interface ColorPresetDao {
     )
     suspend fun getPresetByName(name: String): ColorPreset?
 
+    @Query("SELECT * FROM color_presets WHERE id = :id LIMIT 1")
+    suspend fun getPresetById(id: Long): ColorPreset?
+
     @Update
     suspend fun updatePreset(preset: ColorPreset)
 

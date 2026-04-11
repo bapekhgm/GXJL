@@ -85,6 +85,7 @@ class WorkRecordListViewModel(
         combine(recordsFlow, colorItemsFlow) { records, colorMap ->
             WorkRecordListUiState(
                 workRecordList = records,
+                groupedRecords = records.toGroupedSummaries(),
                 colorItemsMap = colorMap,
                 isLoading = false
             )
@@ -121,6 +122,33 @@ class WorkRecordListViewModel(
 
 data class WorkRecordListUiState(
     val workRecordList: List<WorkRecord> = emptyList(),
+    val groupedRecords: List<WorkRecordGroupSummary> = emptyList(),
     val colorItemsMap: Map<Long, List<WorkRecordColorItem>> = emptyMap(),
     val isLoading: Boolean = true
 )
+
+data class WorkRecordGroupSummary(
+    val entryGroupId: String,
+    val style: String,
+    val records: List<WorkRecord>,
+    val totalAmount: Long,
+    val latestCreateTime: Long
+)
+
+private fun List<WorkRecord>.toGroupedSummaries(): List<WorkRecordGroupSummary> {
+    return groupBy { record ->
+        record.entryGroupId.ifBlank { "legacy_${record.id}" }
+    }.values.map { records ->
+        val sortedRecords = records.sortedWith(
+            compareByDescending<WorkRecord> { it.createTime }
+                .thenByDescending { it.id }
+        )
+        WorkRecordGroupSummary(
+            entryGroupId = sortedRecords.first().entryGroupId.ifBlank { "legacy_${sortedRecords.first().id}" },
+            style = sortedRecords.first().style,
+            records = sortedRecords,
+            totalAmount = sortedRecords.sumOf { it.amount },
+            latestCreateTime = sortedRecords.maxOfOrNull { it.createTime } ?: 0L
+        )
+    }.sortedByDescending { it.latestCreateTime }
+}

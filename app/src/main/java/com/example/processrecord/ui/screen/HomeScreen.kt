@@ -24,7 +24,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Style
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -65,11 +69,14 @@ import com.example.processrecord.ui.component.AppFloatingButton
 import com.example.processrecord.ui.component.AppTopBar
 import com.example.processrecord.ui.component.ChromeIconButton
 import com.example.processrecord.ui.component.EmptyStateCard
+import com.example.processrecord.ui.component.MonthlyStyleStatsBody
 import com.example.processrecord.ui.component.RecordCalendarDialog
-import com.example.processrecord.ui.component.StyleStatsBody
-import com.example.processrecord.ui.component.WorkRecordItem
+import com.example.processrecord.ui.component.StyleStatsSummaryCard
+import com.example.processrecord.ui.component.WorkRecordGroupItem
 import com.example.processrecord.ui.component.WorkRecordItemDisplayMode
+import com.example.processrecord.ui.viewmodel.WorkRecordGroupSummary
 import com.example.processrecord.ui.viewmodel.ExportViewModel
+import com.example.processrecord.ui.viewmodel.MonthlyStyleStatsSection
 import com.example.processrecord.ui.viewmodel.WorkRecordListViewModel
 import com.example.processrecord.ui.viewmodel.WorkRecordStatsViewModel
 import kotlinx.coroutines.Dispatchers
@@ -82,15 +89,17 @@ import java.util.Locale
 const val HOME_ADD_RECORD_BUTTON_TEST_TAG = "home_add_record_button"
 const val HOME_SELECTED_DATE_CHIP_TEST_TAG = "home_selected_date_chip"
 const val HOME_DAILY_RECORDS_TAB_TEST_TAG = "home_daily_records_tab"
+const val HOME_MONTH_OVERVIEW_TAB_TEST_TAG = "home_month_overview_tab"
 const val HOME_MONTH_STATS_TAB_TEST_TAG = "home_month_stats_tab"
+const val HOME_MONTH_OVERVIEW_CARD_TEST_TAG = "home_month_overview_card"
 
 private val HomeFabContentBottomPadding: Dp = 112.dp
 
 @Composable
 fun HomeScreen(
     navigateToRecordAdd: () -> Unit,
+    navigateToGroupEntry: (String, Long?) -> Unit,
     navigateToRecordEdit: (Long) -> Unit,
-    navigateToRecordCopy: (Long) -> Unit,
     navigateToProcessList: () -> Unit,
     navigateToStyleManage: () -> Unit = {},
     navigateToBackup: () -> Unit = {},
@@ -102,8 +111,8 @@ fun HomeScreen(
     val selectedDate by listViewModel.selectedDate.collectAsState()
     val monthTotal by statsViewModel.currentMonthTotalAmount.collectAsState()
     val styleStats by statsViewModel.currentMonthStyleStats.collectAsState()
-    val monthRecords by statsViewModel.currentMonthRecords.collectAsState()
-    val currentMonthColorItems by statsViewModel.currentMonthColorItemsMap.collectAsState()
+    val monthlyStatsSections by statsViewModel.monthlyStatsSections.collectAsState()
+    val monthlyStatsColorItems by statsViewModel.monthlyStatsColorItemsMap.collectAsState()
 
     val dailyTotal = workRecordListUiState.workRecordList.sumOf { it.amount }
     val context = LocalContext.current
@@ -184,7 +193,6 @@ fun HomeScreen(
         topBar = {
             AppTopBar(
                 title = stringResource(R.string.home_title),
-                subtitle = stringResource(R.string.home_overview_subtitle),
                 actions = {
                     Box {
                         ChromeIconButton(
@@ -198,6 +206,7 @@ fun HomeScreen(
                         ) {
                             AppDropdownMenuItem(
                                 text = stringResource(R.string.home_menu_process_manage),
+                                leadingIcon = Icons.AutoMirrored.Filled.List,
                                 onClick = {
                                     showExportMenu = false
                                     navigateToProcessList()
@@ -205,6 +214,7 @@ fun HomeScreen(
                             )
                             AppDropdownMenuItem(
                                 text = stringResource(R.string.home_menu_style_manage),
+                                leadingIcon = Icons.Default.Style,
                                 onClick = {
                                     showExportMenu = false
                                     navigateToStyleManage()
@@ -212,6 +222,7 @@ fun HomeScreen(
                             )
                             AppDropdownMenuItem(
                                 text = stringResource(R.string.home_menu_export_all),
+                                leadingIcon = Icons.Default.FileDownload,
                                 onClick = {
                                     showExportMenu = false
                                     exportStartDate = null
@@ -229,6 +240,7 @@ fun HomeScreen(
                             )
                             AppDropdownMenuItem(
                                 text = stringResource(R.string.home_menu_export_current_month),
+                                leadingIcon = Icons.Default.DateRange,
                                 onClick = {
                                     showExportMenu = false
                                     val monthCalendar = java.util.Calendar.getInstance()
@@ -255,6 +267,7 @@ fun HomeScreen(
                             )
                             AppDropdownMenuItem(
                                 text = stringResource(R.string.home_menu_backup),
+                                leadingIcon = Icons.Default.Backup,
                                 onClick = {
                                     showExportMenu = false
                                     navigateToBackup()
@@ -294,11 +307,14 @@ fun HomeScreen(
             onDateClick = { showCalendarDialog = true },
             onBackToTodayClick = { listViewModel.updateSelectedDate(System.currentTimeMillis()) },
             workRecordListUiState = workRecordListUiState,
+            onGroupClick = { entryGroupId -> navigateToGroupEntry(entryGroupId, null) },
+            onDailyRecordClick = { entryGroupId, recordId ->
+                navigateToGroupEntry(entryGroupId, recordId)
+            },
             onRecordClick = navigateToRecordEdit,
-            onRecordCopy = navigateToRecordCopy,
             styleStats = styleStats,
-            monthRecords = monthRecords,
-            currentMonthColorItems = currentMonthColorItems,
+            monthlyStatsSections = monthlyStatsSections,
+            monthlyStatsColorItems = monthlyStatsColorItems,
             modifier = Modifier.padding(innerPadding)
         )
     }
@@ -319,11 +335,12 @@ private fun OverviewHomeContent(
     onDateClick: () -> Unit,
     onBackToTodayClick: () -> Unit,
     workRecordListUiState: com.example.processrecord.ui.viewmodel.WorkRecordListUiState,
+    onGroupClick: (String) -> Unit,
+    onDailyRecordClick: (String, Long) -> Unit,
     onRecordClick: (Long) -> Unit,
-    onRecordCopy: (Long) -> Unit,
     styleStats: List<com.example.processrecord.data.dao.StyleStat>,
-    monthRecords: List<WorkRecord>,
-    currentMonthColorItems: Map<Long, List<WorkRecordColorItem>>,
+    monthlyStatsSections: List<MonthlyStyleStatsSection>,
+    monthlyStatsColorItems: Map<Long, List<WorkRecordColorItem>>,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier) {
@@ -340,43 +357,72 @@ private fun OverviewHomeContent(
             onTabSelected = onOverviewTabSelected
         )
 
-        if (selectedOverviewTab == 0) {
-            DailyRecordDateSelector(
-                selectedDate = selectedDate,
-                onPreviousDayClick = onPreviousDayClick,
-                onNextDayClick = onNextDayClick,
-                onDateClick = onDateClick,
-                onBackToTodayClick = onBackToTodayClick
-            )
-            WorkRecordListBody(
-                workRecordList = workRecordListUiState.workRecordList,
-                colorItemsMap = workRecordListUiState.colorItemsMap,
-                onRecordClick = onRecordClick,
-                onRecordCopy = onRecordCopy,
-                onSwipeLeft = onNextDayClick,
-                onSwipeRight = onPreviousDayClick,
-                displayMode = WorkRecordItemDisplayMode.LargeDaily,
-                modifier = Modifier.weight(1f)
-            )
-        } else {
-            StyleStatsBody(
-                styleStats = styleStats,
-                workRecordList = monthRecords,
-                colorItemsMap = currentMonthColorItems,
-                onRecordClick = onRecordClick,
-                bottomContentPadding = HomeFabContentBottomPadding,
-                modifier = Modifier.weight(1f)
-            )
+        when (selectedOverviewTab) {
+            0 -> {
+                DailyRecordDateSelector(
+                    selectedDate = selectedDate,
+                    onPreviousDayClick = onPreviousDayClick,
+                    onNextDayClick = onNextDayClick,
+                    onDateClick = onDateClick,
+                    onBackToTodayClick = onBackToTodayClick
+                )
+                WorkRecordListBody(
+                    groupedRecords = workRecordListUiState.groupedRecords,
+                    colorItemsMap = workRecordListUiState.colorItemsMap,
+                    onGroupClick = onGroupClick,
+                    onRecordClick = onDailyRecordClick,
+                    onSwipeLeft = onNextDayClick,
+                    onSwipeRight = onPreviousDayClick,
+                    displayMode = WorkRecordItemDisplayMode.LargeDaily,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            1 -> {
+                MonthlyStyleStatsBody(
+                    monthSections = monthlyStatsSections,
+                    colorItemsMap = monthlyStatsColorItems,
+                    onRecordClick = onRecordClick,
+                    topContentPadding = 10.dp,
+                    bottomContentPadding = HomeFabContentBottomPadding,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            else -> {
+                MonthOverviewBody(
+                    styleStats = styleStats,
+                    modifier = Modifier.weight(1f)
+                )
+            }
         }
     }
 }
 
 @Composable
+private fun MonthOverviewBody(
+    styleStats: List<com.example.processrecord.data.dao.StyleStat>,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.TopCenter
+    ) {
+        StyleStatsSummaryCard(
+            styleStats = styleStats,
+            modifier = Modifier
+                .padding(horizontal = 16.dp, vertical = 6.dp)
+                .testTag(HOME_MONTH_OVERVIEW_CARD_TEST_TAG)
+        )
+    }
+}
+
+@Composable
 fun WorkRecordListBody(
-    workRecordList: List<WorkRecord>,
-    colorItemsMap: Map<Long, List<WorkRecordColorItem>> = emptyMap(),
-    onRecordClick: (Long) -> Unit,
-    onRecordCopy: (Long) -> Unit,
+    groupedRecords: List<WorkRecordGroupSummary>,
+    colorItemsMap: Map<Long, List<WorkRecordColorItem>>,
+    onGroupClick: (String) -> Unit,
+    onRecordClick: (String, Long) -> Unit,
     onSwipeLeft: (() -> Unit)? = null,
     onSwipeRight: (() -> Unit)? = null,
     displayMode: WorkRecordItemDisplayMode = WorkRecordItemDisplayMode.Standard,
@@ -403,7 +449,7 @@ fun WorkRecordListBody(
         )
     }
 
-    if (workRecordList.isEmpty()) {
+    if (groupedRecords.isEmpty()) {
         Box(
             modifier = modifier.fillMaxSize().then(swipeModifier),
             contentAlignment = Alignment.Center
@@ -427,13 +473,12 @@ fun WorkRecordListBody(
             },
             verticalArrangement = Arrangement.spacedBy(if (isLargeDaily) 8.dp else 10.dp)
         ) {
-            items(items = workRecordList, key = { it.id }) { record ->
-                WorkRecordItem(
-                    record = record,
-                    colorItems = colorItemsMap[record.id] ?: emptyList(),
-                    onCopy = { onRecordCopy(record.id) },
-                    onClick = { onRecordClick(record.id) },
-                    displayMode = displayMode
+            items(items = groupedRecords, key = { it.entryGroupId }) { group ->
+                WorkRecordGroupItem(
+                    group = group,
+                    colorItemsMap = colorItemsMap,
+                    onClick = { onGroupClick(group.entryGroupId) },
+                    onRecordClick = { recordId -> onRecordClick(group.entryGroupId, recordId) }
                 )
             }
         }

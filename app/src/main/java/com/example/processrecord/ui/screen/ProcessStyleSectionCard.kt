@@ -21,7 +21,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.Sell
+import androidx.compose.material.icons.filled.Style
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -79,7 +80,13 @@ fun ProcessStyleSectionCard(
     onDeleteProcess: (Process) -> Unit,
     styleError: WorkRecordFieldError? = null,
     processError: WorkRecordFieldError? = null,
+    showStyleField: Boolean = true,
     showAdditionalFields: Boolean = true,
+    showTotalQuantityField: Boolean = true,
+    totalQuantityValue: String = workRecordDetails.totalQuantity,
+    onTotalQuantityChange: (String) -> Unit = { value ->
+        onValueChange(workRecordDetails.copy(totalQuantity = value))
+    },
     embedded: Boolean = false,
     modifier: Modifier = Modifier
 ) {
@@ -99,68 +106,70 @@ fun ProcessStyleSectionCard(
     fun FormContent() {
         val styleFocusRequester = remember { FocusRequester() }
 
-        OutlinedTextField(
-            value = workRecordDetails.style,
-            onValueChange = { onValueChange(workRecordDetails.copy(style = it)) },
-            label = { Text(stringResource(R.string.work_record_label_style)) },
-            leadingIcon = { Icon(imageVector = Icons.Default.ShoppingCart, contentDescription = null) },
-            trailingIcon = {
-                Box {
-                    Icon(
-                        imageVector = Icons.Default.ArrowDropDown,
-                        contentDescription = stringResource(R.string.work_record_content_description_style_history),
-                        modifier = Modifier.clickable { expandedStyle = true }
-                    )
-                    AppDropdownMenu(
-                        expanded = expandedStyle,
-                        onDismissRequest = { expandedStyle = false }
-                    ) {
-                        if (styleList.isEmpty()) {
-                            AppDropdownMenuItem(
-                                text = stringResource(R.string.work_record_style_history_empty),
-                                onClick = { expandedStyle = false },
-                                enabled = false
-                            )
-                        } else {
-                            styleList.forEach { style ->
+        if (showStyleField) {
+            OutlinedTextField(
+                value = workRecordDetails.style,
+                onValueChange = { onValueChange(workRecordDetails.copy(style = it)) },
+                label = { Text(stringResource(R.string.work_record_label_style)) },
+                leadingIcon = { Icon(imageVector = Icons.Default.Style, contentDescription = null) },
+                trailingIcon = {
+                    Box {
+                        Icon(
+                            imageVector = Icons.Default.ArrowDropDown,
+                            contentDescription = stringResource(R.string.work_record_content_description_style_history),
+                            modifier = Modifier.clickable { expandedStyle = true }
+                        )
+                        AppDropdownMenu(
+                            expanded = expandedStyle,
+                            onDismissRequest = { expandedStyle = false }
+                        ) {
+                            if (styleList.isEmpty()) {
                                 AppDropdownMenuItem(
-                                    text = style.name,
-                                    onClick = {
-                                        onStyleSelected(style.name)
-                                        expandedStyle = false
-                                    },
-                                    selected = workRecordDetails.style == style.name
+                                    text = stringResource(R.string.work_record_style_history_empty),
+                                    onClick = { expandedStyle = false },
+                                    enabled = false
                                 )
+                            } else {
+                                styleList.forEach { style ->
+                                    AppDropdownMenuItem(
+                                        text = style.name,
+                                        onClick = {
+                                            onStyleSelected(style.name)
+                                            expandedStyle = false
+                                        },
+                                        selected = workRecordDetails.style == style.name
+                                    )
+                                }
                             }
                         }
                     }
-                }
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .focusRequester(styleFocusRequester)
-                .testTag(STYLE_INPUT_TEST_TAG),
-            singleLine = true,
-            shape = AppTextFieldShape,
-            colors = appOutlinedTextFieldColors(),
-            isError = styleError != null,
-            supportingText = {
-                workRecordFieldErrorText(styleError)?.let { Text(text = it) }
-            },
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
-        )
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(styleFocusRequester)
+                    .testTag(STYLE_INPUT_TEST_TAG),
+                singleLine = true,
+                shape = AppTextFieldShape,
+                colors = appOutlinedTextFieldColors(),
+                isError = styleError != null,
+                supportingText = {
+                    workRecordFieldErrorText(styleError)?.let { Text(text = it) }
+                },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
+            )
 
-        LaunchedEffect(Unit) {
-            if (workRecordDetails.style.isEmpty()) {
-                try {
-                    styleFocusRequester.requestFocus()
-                } catch (_: Exception) {
-                    // Ignore focus failures
+            LaunchedEffect(Unit) {
+                if (workRecordDetails.style.isEmpty()) {
+                    try {
+                        styleFocusRequester.requestFocus()
+                    } catch (_: Exception) {
+                        // Ignore focus failures
+                    }
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(10.dp))
+        }
 
         Box(modifier = Modifier.fillMaxWidth()) {
             OutlinedTextField(
@@ -561,59 +570,46 @@ fun ProcessStyleSectionCard(
             Spacer(modifier = Modifier.height(10.dp))
 
             BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                val stackFields = maxWidth < 420.dp
+                val serialNumberField: @Composable (Modifier) -> Unit = { fieldModifier ->
+                    OutlinedTextField(
+                        value = workRecordDetails.serialNumber,
+                        onValueChange = { onValueChange(workRecordDetails.copy(serialNumber = it)) },
+                        label = { Text(stringResource(R.string.work_record_label_serial_number)) },
+                        modifier = fieldModifier,
+                        singleLine = true,
+                        shape = AppTextFieldShape,
+                        colors = appOutlinedTextFieldColors()
+                    )
+                }
 
-                if (stackFields) {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        OutlinedTextField(
-                            value = workRecordDetails.serialNumber,
-                            onValueChange = { onValueChange(workRecordDetails.copy(serialNumber = it)) },
-                            label = { Text(stringResource(R.string.work_record_label_serial_number)) },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            shape = AppTextFieldShape,
-                            colors = appOutlinedTextFieldColors()
-                        )
-                        OutlinedTextField(
-                            value = workRecordDetails.totalQuantity,
-                            onValueChange = {
-                                onValueChange(workRecordDetails.copy(totalQuantity = it.filter(Char::isDigit)))
-                            },
-                            label = { Text(stringResource(R.string.work_record_label_total_quantity)) },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            shape = AppTextFieldShape,
-                            colors = appOutlinedTextFieldColors()
-                        )
-                    }
-                } else {
+                val totalQuantityField: @Composable (Modifier) -> Unit = { fieldModifier ->
+                    OutlinedTextField(
+                        value = totalQuantityValue,
+                        onValueChange = {
+                            val filtered = it.filter(Char::isDigit)
+                            if (filtered.isEmpty() || filtered.toLongOrNull() != null) {
+                                onTotalQuantityChange(filtered)
+                            }
+                        },
+                        label = { Text(stringResource(R.string.work_record_label_total_quantity)) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = fieldModifier,
+                        singleLine = true,
+                        shape = AppTextFieldShape,
+                        colors = appOutlinedTextFieldColors()
+                    )
+                }
+
+                if (showTotalQuantityField) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        OutlinedTextField(
-                            value = workRecordDetails.serialNumber,
-                            onValueChange = { onValueChange(workRecordDetails.copy(serialNumber = it)) },
-                            label = { Text(stringResource(R.string.work_record_label_serial_number)) },
-                            modifier = Modifier.weight(1f),
-                            singleLine = true,
-                            shape = AppTextFieldShape,
-                            colors = appOutlinedTextFieldColors()
-                        )
-                        OutlinedTextField(
-                            value = workRecordDetails.totalQuantity,
-                            onValueChange = {
-                                onValueChange(workRecordDetails.copy(totalQuantity = it.filter(Char::isDigit)))
-                            },
-                            label = { Text(stringResource(R.string.work_record_label_total_quantity)) },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.weight(1f),
-                            singleLine = true,
-                            shape = AppTextFieldShape,
-                            colors = appOutlinedTextFieldColors()
-                        )
+                        totalQuantityField(Modifier.weight(1f))
+                        serialNumberField(Modifier.weight(1f))
                     }
+                } else {
+                    serialNumberField(Modifier.fillMaxWidth())
                 }
             }
         }
@@ -627,10 +623,19 @@ fun ProcessStyleSectionCard(
             FormContent()
         }
     } else {
-        SectionCard(modifier = modifier) {
-            SectionHeader(title = stringResource(R.string.work_record_section_process_style)) {
+        SectionCard(modifier = modifier, emphasized = true) {
+            SectionHeader(
+                title = stringResource(
+                    if (showStyleField) {
+                        R.string.work_record_section_process_style
+                    } else {
+                        R.string.work_record_section_process_only
+                    }
+                ),
+                emphasized = true
+            ) {
                 Icon(
-                    imageVector = Icons.Default.ShoppingCart,
+                    imageVector = Icons.Default.Sell,
                     contentDescription = null,
                     modifier = Modifier.size(16.dp)
                 )

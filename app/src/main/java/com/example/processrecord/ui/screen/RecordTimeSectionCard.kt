@@ -1,10 +1,12 @@
 package com.example.processrecord.ui.screen
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
@@ -75,10 +78,10 @@ fun RecordTimeSectionCard(
         showCalendarDialog = true
     }
 
-    SectionCard {
+    SectionCard(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp)) {
         SectionHeader(title = stringResource(R.string.work_record_section_time_optional)) {
             Icon(
-                imageVector = Icons.Default.PlayArrow,
+                imageVector = Icons.Default.Schedule,
                 contentDescription = null,
                 modifier = Modifier.size(16.dp)
             )
@@ -177,8 +180,13 @@ fun RecordTimeSectionCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(
-                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
-                        RoundedCornerShape(8.dp)
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f),
+                        RoundedCornerShape(12.dp)
+                    )
+                    .border(
+                        width = 1.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.24f),
+                        shape = RoundedCornerShape(12.dp)
                     )
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -186,12 +194,12 @@ fun RecordTimeSectionCard(
                 Text(
                     text = stringResource(R.string.work_record_label_duration),
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.outline
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
                     text = durationText,
                     style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.primary
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
         }

@@ -19,7 +19,8 @@ import androidx.room.PrimaryKey
     indices = [
         Index(value = ["date"]),
         Index(value = ["createTime"]),
-        Index(value = ["processId"])
+        Index(value = ["processId"]),
+        Index(value = ["entryGroupId"])
     ]
 )
 data class WorkRecord(
@@ -29,6 +30,7 @@ data class WorkRecord(
     // Snapshot field to keep display name when the linked process is removed/renamed.
     val processName: String,
     val style: String,
+    val entryGroupId: String = "",
     // Monetary values are stored in cents.
     val unitPrice: Long,
     val quantity: Long,

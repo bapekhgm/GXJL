@@ -31,7 +31,7 @@ import com.example.processrecord.data.entity.WorkRecordImage
         ColorPreset::class,
         ColorGroup::class
     ],
-    version = 16,
+    version = 19,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -482,6 +482,69 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // v16 -> v17: group records created in one entry flow.
+        private val MIGRATION_16_17 = object : Migration(16, 17) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE work_records ADD COLUMN entryGroupId TEXT NOT NULL DEFAULT ''")
+                db.execSQL(
+                    """
+                    UPDATE work_records
+                    SET entryGroupId = 'legacy_' || id
+                    WHERE entryGroupId = ''
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_work_records_entryGroupId ON work_records (entryGroupId)"
+                )
+            }
+        }
+
+        // v17 -> v18: store deficit as free-form text instead of integer.
+        private val MIGRATION_17_18 = object : Migration(17, 18) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS work_record_color_items_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        workRecordId INTEGER NOT NULL,
+                        colorName TEXT NOT NULL,
+                        colorHex TEXT NOT NULL,
+                        quantity INTEGER NOT NULL,
+                        deficit TEXT NOT NULL DEFAULT '',
+                        colorCode TEXT NOT NULL DEFAULT '',
+                        sortOrder INTEGER NOT NULL DEFAULT 0,
+                        FOREIGN KEY(workRecordId) REFERENCES work_records(id) ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO work_record_color_items_new
+                    SELECT id, workRecordId, colorName, colorHex, quantity,
+                           CAST(deficit AS TEXT), colorCode, sortOrder
+                    FROM work_record_color_items
+                    """.trimIndent()
+                )
+                db.execSQL("DROP TABLE work_record_color_items")
+                db.execSQL("ALTER TABLE work_record_color_items_new RENAME TO work_record_color_items")
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_work_record_color_items_workRecordId ON work_record_color_items(workRecordId)"
+                )
+            }
+        }
+
+        // v18 -> v19: track whether a deficit has been resolved.
+        private val MIGRATION_18_19 = object : Migration(18, 19) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    ALTER TABLE work_record_color_items
+                    ADD COLUMN isDeficitResolved INTEGER NOT NULL DEFAULT 0
+                    """.trimIndent()
+                )
+            }
+        }
+
         val ALL_MIGRATIONS = arrayOf(
             MIGRATION_1_2,
             MIGRATION_2_3,
@@ -497,7 +560,10 @@ abstract class AppDatabase : RoomDatabase() {
             MIGRATION_12_13,
             MIGRATION_13_14,
             MIGRATION_14_15,
-            MIGRATION_15_16
+            MIGRATION_15_16,
+            MIGRATION_16_17,
+            MIGRATION_17_18,
+            MIGRATION_18_19
         )
 
         fun closeDatabase() {

@@ -4,6 +4,7 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,7 +26,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.example.processrecord.ui.component.FrostedCard
 
 // ───────────────────────────────────────────────────────────
 // 区块标题组件 - 带渐变图标徽章
@@ -34,29 +34,51 @@ import com.example.processrecord.ui.component.FrostedCard
 @Composable
 fun SectionHeader(
     title: String,
+    emphasized: Boolean = false,
     icon: @Composable () -> Unit
 ) {
+    val iconShape = RoundedCornerShape(if (emphasized) 12.dp else 10.dp)
+    val iconContainerColor = if (emphasized) {
+        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
+    }
+    val iconBorderColor = if (emphasized) {
+        MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+    } else {
+        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.38f)
+    }
+
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = Modifier.padding(bottom = 16.dp)
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier.padding(bottom = 14.dp)
     ) {
         Box(
             modifier = Modifier
-                .clip(RoundedCornerShape(12.dp))
-                .background(
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
-                )
-                .padding(10.dp),
+                .clip(iconShape)
+                .background(iconContainerColor)
+                .border(width = 1.dp, color = iconBorderColor, shape = iconShape)
+                .padding(if (emphasized) 8.dp else 7.dp),
             contentAlignment = Alignment.Center
         ) {
-            CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onPrimaryContainer) {
+            CompositionLocalProvider(
+                LocalContentColor provides if (emphasized) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                }
+            ) {
                 icon()
             }
         }
         Text(
             text = title,
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+            style = if (emphasized) {
+                MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+            } else {
+                MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold)
+            },
             color = MaterialTheme.colorScheme.onSurface
         )
     }
@@ -69,15 +91,39 @@ fun SectionHeader(
 @Composable
 fun SectionCard(
     modifier: Modifier = Modifier,
+    emphasized: Boolean = false,
+    contentPadding: PaddingValues = PaddingValues(horizontal = 18.dp, vertical = 18.dp),
     content: @Composable () -> Unit
 ) {
-    FrostedCard(
+    val shape = RoundedCornerShape(if (emphasized) 22.dp else 20.dp)
+
+    Card(
         modifier = modifier
             .fillMaxWidth()
             .animateContentSize(),
-        shape = RoundedCornerShape(24.dp)
+        shape = shape,
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (emphasized) {
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+            } else {
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.38f)
+            }
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (emphasized) {
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.16f)
+            } else {
+                MaterialTheme.colorScheme.surface.copy(alpha = 0.98f)
+            }
+        )
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(contentPadding)
+        ) {
             content()
         }
     }
